@@ -2,7 +2,7 @@
 
 A frame is b"KD", a type byte, a u32 LE length and the payload. This module is
 only encode, decode and translation between the wire and the sim process's own
-record/line protocol (see server.py); the sockets live in server.py.
+record/line protocol (see session.py); the sockets live in session.py and server.py.
 """
 import io
 import json

@@ -5,4 +5,9 @@ apps/*/
 !apps/src/
 !apps/kodekit/
 !apps/icons/
+# build outputs of hostsim/build.sh when pointed inside the tree
+build/
+build-*/
+# caches
 __pycache__/
+.pytest_cache/

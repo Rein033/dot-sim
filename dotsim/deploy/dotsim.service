@@ -3,6 +3,7 @@ Description=Dot Sim (unofficial Kode Dot in the browser)
 After=network-online.target
 
 [Service]
+# Every KODE_* setting the server reads (dotsim/server/config.py, plus KODE_VERSION).
 User=dotsim
 WorkingDirectory=/opt/dot-sim/dotsim/server
 Environment=KODE_PORT=8000
@@ -15,6 +16,8 @@ Environment=KODE_BUILDS=/var/lib/dotsim/builds
 Environment=KODE_DATA=/var/lib/dotsim/data
 Environment=KODE_WORK=/var/lib/dotsim/work
 Environment=KODE_MAX_SESSIONS=4
+# Optional: the commit shown in the page's footer (default: the checkout's git HEAD).
+#Environment=KODE_VERSION=
 ExecStart=/usr/bin/python3 /opt/dot-sim/dotsim/server/server.py
 Restart=always
 RestartSec=2

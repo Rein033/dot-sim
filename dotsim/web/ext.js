@@ -106,7 +106,7 @@
     sim.onJson(j);
   };
 
-  // The server's own messages (server.py serve_ws), next to sim.js's.
+  // The server's own messages (server.py serve_ws, session.py Session), next to sim.js's.
   function ours(j) {
     if (j.t === 'started') {
       DS.running = true;
@@ -259,7 +259,7 @@
   }
   const KEYS = { t: 'top', T: 'top', b: 'bot', B: 'bot', z: 'top', Z: 'top', x: 'bot', X: 'bot',
                  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
-  const EXTRA = { z: 'top', Z: 'top', x: 'bot', X: 'bot' };   // sim.js has T and B; the old page had Z and X
+  const EXTRA = { z: 'top', Z: 'top', x: 'bot', X: 'bot' };   // sim.js has T and B; Z and X work too
   window.addEventListener('keydown', (e) => {
     if (editable(e.target) || e.repeat) return;
     if (e.key === 'Escape') { e.preventDefault(); if (DS.app) DS.home(); else DS.emit('key', 'bot'); return; }

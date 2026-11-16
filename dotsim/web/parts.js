@@ -1,5 +1,5 @@
 /* The board's parts, one card each in Advanced (the cards sit under the motion card).
- * Page <-> server: JSON text on the KD socket, {"<part>": ...} (see server.py).
+ * Page <-> server: JSON text on the KD socket, {"<part>": ...} (see session.py, Session.on_browser).
  *
  *   microSD: kode-sim's own "SD inserted" box (#sdin) puts the card in and out
  *   ({"sd": bool}); this card lists the card's files, uploads (700 KB each, 16 MB
