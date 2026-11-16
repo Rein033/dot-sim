@@ -19,10 +19,13 @@
  *   "i <ax> <ay> <az> <gx> <gy> <gz> <mx> <my> <mz> <temp>"
  *                         motion: milli-g, milli-degrees/s, milligauss, tenths of a degree
  *                         (board axes: x right, y toward the top, z out of the glass)
+ *   "s <0|1>"             the microSD card out / in (the card is the folder <data>/sd)
  *   "c <text>"            a console line: echoed back as an 'L' record "> <text>" and
  *                         written, with a newline, to the firmware's stdin
- *   "? bat" / "? imu"     ask what the SDK's drivers read back from the chips (for tests):
- *                         answered as 'L' records "bat <pct> <usb>" and "imu <ten values>"
+ *   "? bat" / "? imu" / "? sd"
+ *                         ask what the SDK's drivers read back from the chips (for tests):
+ *                         answered as 'L' records "bat <pct> <usb>", "imu <ten values>" and
+ *                         "sd <mounted 0|1> <files on the card>"
  *                         (nothing while the drivers are not up yet)
  *
  * Without KODE_SIM_SOCK the sim runs headless; KODE_SIM_SNAP=<file.ppm> then
@@ -322,6 +325,10 @@ static void handle_line(char *line)
         {
             kdotsim_battery_set((uint8_t)((pct < 0) ? 0 : ((pct > 100) ? 100 : pct)), usb != 0);
         }
+    }
+    else if ( ('s' == line[0]) && (' ' == line[1]) )
+    {
+        kdotsim_sd_set(atoi(line + 2) != 0);
     }
     else if ( ('i' == line[0]) && (' ' == line[1]) )
     {

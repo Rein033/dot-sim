@@ -280,3 +280,35 @@ def test_server_error_stays_visible(page):
     page.wait_for_timeout(1500)
     assert "Error:" in page.inner_text("#dotsim-status")
     assert page.evaluate("DotSim.view") == "face"
+
+
+def test_sd_card_in_advanced(page):
+    page.evaluate("DotSim.setMode('advanced')")
+    page.click("#settings")
+    page.evaluate("DotSim.start('slang')")
+    page.wait_for_function("DotSim.running", timeout=20000)
+    card = page.locator("#sdcard")
+    assert card.is_visible()
+    page.locator("#sdin").check()
+    page.locator("#sdfile").set_input_files({"name": "<b>notes.txt", "mimeType": "text/plain", "buffer": b"hello card"})
+    try:
+        page.wait_for_function("document.querySelector('#sdlist').textContent.includes('notes')", timeout=5000)
+    except Exception:
+        raise AssertionError("no file listed; card says %r; errors %r" % (page.inner_text("#sdinfo"), page.errors))
+    assert page.locator("#sdlist b").count() == 0          # file names are text, never markup
+    assert "10 B" in page.locator("#sdlist").inner_text()
+    with page.expect_download() as dl:
+        page.locator("#sdlist button.sd-get").click()
+    assert open(dl.value.path(), "rb").read() == b"hello card"
+    got = ""
+    for _ in range(20):                       # the sim sees the card in, with the file on it
+        page.fill("#cmd", "? sd")
+        page.press("#cmd", "Enter")
+        page.wait_for_timeout(500)
+        got = page.inner_text("#log")
+        if "sd 1 1" in got:
+            break
+    assert "sd 1 1" in got, got[-800:]
+    page.evaluate("DotSim.setMode('beginner')")
+    assert not card.is_visible()
+    assert page.errors == []

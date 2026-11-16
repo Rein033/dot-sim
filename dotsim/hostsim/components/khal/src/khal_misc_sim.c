@@ -2,14 +2,13 @@
 /**
  * @file khal_misc_sim.c
  * @brief The rest of the board's HAL, simulated: clocks, console, identity,
- *        the warm-boot keep, power, the SD slot, the die temperature, and the
+ *        the warm-boot keep, power, the die temperature, and the
  *        ports of khal_exp and khal_pwm.
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/statvfs.h>
 
 #include "khal_clk.h"
 #include "khal_console.h"
@@ -132,57 +131,6 @@ void khal_power_off_enter(void) { kdotsim_exit("power off"); }
 static uint32_t s_off_note;
 void khal_power_off_note_set(uint32_t note) { s_off_note = note; }
 uint32_t khal_power_off_note(void) { return s_off_note; }
-
-/* ---- the SD slot: a directory under the sim's data dir ---- */
-static char s_sd_mp[512];
-static bool s_sd_mounted;
-static bool s_sd_hosted;
-kode_status_t khal_sdmmc_mount(uint8_t width, uint32_t max_khz, khal_sdmmc_card_t *out)
-{
-    (void)width; (void)max_khz;
-    (void)snprintf(s_sd_mp, sizeof(s_sd_mp), "%s/sdcard", kdotsim_data_dir());
-    (void)mkdir(s_sd_mp, 0755);
-    s_sd_mounted = true;
-    if ( NULL != out )
-    {
-        memset(out, 0, sizeof(*out));
-        (void)snprintf(out->name, sizeof(out->name), "SIMSD");
-        out->sectors = 4U * 1024U * 1024U * 2U;   /* 4 GB of 512-byte sectors */
-        out->sector_size = 512U;
-        out->high_capacity = true;
-        out->bus_width = 4U;
-        out->freq_khz = 40000U;
-        out->max_freq_khz = 40000U;
-    }
-    return KODE_OK;
-}
-bool khal_sdmmc_ready(void) { return true; }
-const char *khal_sdmmc_mount_point(void) { return s_sd_mounted ? s_sd_mp : NULL; }
-void khal_sdmmc_unmount(void) { s_sd_mounted = false; }
-bool khal_sdmmc_mounted(void) { return s_sd_mounted; }
-void khal_sdmmc_set_hosted(bool hosted) { s_sd_hosted = hosted; }
-bool khal_sdmmc_hosted(void) { return s_sd_hosted; }
-kode_status_t khal_sdmmc_info(uint64_t *total, uint64_t *free_bytes)
-{
-    struct statvfs v;
-    if ( statvfs(kdotsim_data_dir(), &v) != 0 ) { return KODE_ERROR; }
-    uint64_t const cap = 4ULL * 1024ULL * 1024ULL * 1024ULL;
-    uint64_t fr = (uint64_t)v.f_bavail * v.f_frsize;
-    if ( NULL != total ) { *total = cap; }
-    if ( NULL != free_bytes ) { *free_bytes = (fr < cap) ? fr : cap; }
-    return KODE_OK;
-}
-kode_status_t khal_sdmmc_format(void) { return KODE_DENIED; }
-kode_status_t khal_sdmmc_read_sectors(uint32_t first, uint32_t count, void *dst)
-{
-    (void)first; (void)count; (void)dst;
-    return KODE_DENIED;
-}
-kode_status_t khal_sdmmc_write_sectors(uint32_t first, uint32_t count, const void *src)
-{
-    (void)first; (void)count; (void)src;
-    return KODE_DENIED;
-}
 
 /* ---- die temperature ---- */
 kode_status_t khal_temp_read(int32_t *deci_c)

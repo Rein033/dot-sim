@@ -31,10 +31,10 @@ main { height: auto; flex-wrap: wrap; align-items: flex-start; justify-content: 
 #dotsim-foot { padding: 4px 24px 24px; text-align: center; }
 
 /* What kode-sim's page has and the fast engine does not do (yet): the Mac's microphone,
- * installing a .bin, the microSD and the computer on the USB cable. */
+ * installing a .bin and the computer on the USB cable. */
 .ds-unsupported { display: none !important; }
 /* Beginner: the apps, the code and the battery; Advanced: also motion and the console. */
-html.ds-beginner #motioncard, html.ds-beginner .side .console { display: none; }
+html.ds-beginner #motioncard, html.ds-beginner #sdcard, html.ds-beginner .side .console { display: none; }
 
 @media (max-width: 900px) {
   /* kode-sim's page turns main into a column here: our parts take its width. No wrap:

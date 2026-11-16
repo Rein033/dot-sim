@@ -140,3 +140,31 @@ def test_motion_line_sets_imu(sim):
 def test_console_roundtrip(sim):
     sim.send("c help")
     sim.wait_log(lambda t: "help" in t and t.lstrip().startswith(">"))
+
+
+def sd_dir(sim):
+    return os.path.join(sim.dir, "data", "sd")
+
+
+def test_sd_insert_remove(sim):
+    # a fresh sim has no card; `? sd` mounts through kdrv_sd and counts the files
+    assert sim.ask("sd", "sd ") == "sd 0 0"
+    sim.send("s 1")
+    assert sim.ask("sd", "sd ") == "sd 1 0"
+    sim.send("s 0")
+    assert sim.ask("sd", "sd ") == "sd 0 0"
+    sim.send("s 1")
+    assert sim.ask("sd", "sd ") == "sd 1 0"
+
+
+def test_sd_file_seen_by_app(sim):
+    sim.send("s 1")
+    assert sim.ask("sd", "sd ") == "sd 1 0"
+    for n in ("a.txt", "b.bin"):
+        with open(os.path.join(sd_dir(sim), n), "wb") as f:
+            f.write(b"x" * 100)
+    assert sim.ask("sd", "sd ") == "sd 1 2"
+    sim.send("s 0")
+    assert sim.ask("sd", "sd ") == "sd 0 0"       # a pulled card shows nothing
+    sim.send("s 1")
+    assert sim.ask("sd", "sd ") == "sd 1 2"       # and the files are still on it

@@ -61,6 +61,6 @@
   }).observe(document.body, { subtree: true, childList: true, characterData: true });
 
   // Nothing behind these in the fast engine (yet).
-  for (const id of ['micin', 'app', 'sdin']) { const e = $id(id); if (e) e.closest('.row').classList.add('ds-unsupported'); }
+  for (const id of ['micin', 'app']) { const e = $id(id); if (e) e.closest('.row').classList.add('ds-unsupported'); }
   $id('usbcard').classList.add('ds-unsupported');
 })();

@@ -9,7 +9,7 @@ talks to this server over a unix socket (hostsim/components/khal/src/kdotsim_bri
       F frame (u16 w, u16 h, RGB565), E led rgb, B brightness, H haptic ms,
       T tone (u32 hz, u32 ms, u8 vol), P pcm (u32 rate, s16...), L log, X exit
       N link message (text) for the paired device
-  server -> sim: text lines "b <mask>", "t <0|1> <x> <y>", "q",
+  server -> sim: text lines "b <mask>", "t <0|1> <x> <y>", "s <0|1>" (microSD out/in), "q",
       "n <text>" (link message), "m <w> <h> <base64>" (mirror picture)
 
 Kode Link: two sessions of the same user (a "dot" and a "watch" role) are
@@ -32,6 +32,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 import hashlib
 import uuid
 import struct
@@ -49,7 +50,7 @@ ROOT = Path(__file__).parent
 STATIC = Path(os.environ.get("KODE_STATIC", ROOT.parent / "web"))       # ours, at /dotsim/
 KSWEB = Path(os.environ.get("KODE_KSWEB", ROOT.parent.parent / "web"))   # kode-sim's page, at /
 KSWEB_FILES = ("sim.js", "audio-worklet.js", "kode-dot.png", "kode-dot.json")
-PROBES = ("bat", "imu")    # "? <what>" typed in the console goes to the sim as its debug line
+PROBES = ("bat", "imu", "sd")    # "? <what>" typed in the console goes to the sim as its debug line
 PORT = int(os.environ.get("KODE_PORT", "8000"))
 BUILDS = Path(os.environ.get("KODE_BUILDS", "/opt/kode/builds"))
 DATA = Path(os.environ.get("KODE_DATA", "/opt/kode/data"))
@@ -174,6 +175,130 @@ class FrameSender:
                 pass
 
 
+# ---- The microSD: names and sizes are checked here, never trusted from the page ----
+#
+# The card is a size-limited tmpfs inside the sandbox (bwrap --size, SD_MOUNT_ARGS): whatever the app
+# writes there stops at 16 MB. The server reaches it through /proc/<sandbox pid>/root, opened ONCE as a
+# directory fd (sd_open); every later call works relative to that fd, so nothing the app does to the
+# files (links, folders, renames) can lead the server outside the card.
+
+SD_FILE_MAX = 700 * 1024        # one upload
+SD_TOTAL_MAX = 16 * 1024 * 1024  # everything on the card, per session (also the tmpfs size)
+SD_NAME_MAX = 64
+SD_LIST_MAX = 500
+SD_MOUNT_ARGS = ["--size", str(SD_TOTAL_MAX), "--tmpfs", "/data/sd"]
+SD_TMP = ".put-"
+
+
+def sd_name_ok(name):
+    """A plain file name: no path, no '..', not empty, at most 64 characters and 255 bytes of UTF-8."""
+    if not (isinstance(name, str) and 0 < len(name) <= SD_NAME_MAX):
+        return False
+    try:
+        if len(name.encode("utf-8")) > 255:
+            return False
+    except UnicodeError:       # a lone surrogate from the page's JSON
+        return False
+    return ("/" not in name and "\\" not in name and name != "." and ".." not in name
+            and not any(ord(c) < 32 or ord(c) == 127 for c in name))
+
+
+def sd_open(pid):
+    """A directory fd on the card of the sandbox whose init (or app) is @p pid, or None."""
+    try:
+        return os.open(f"/proc/{pid}/root/data/sd", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError:
+        return None
+
+
+def sd_child_pid(pid):
+    """The first process inside the sandbox that @p pid (bwrap) started, or None."""
+    try:
+        kids = Path(f"/proc/{pid}/task/{pid}/children").read_text().split()
+        return int(kids[0]) if kids else None
+    except (OSError, ValueError):
+        return None
+
+
+def sd_files(dfd):
+    """[{name, size}] of the regular files on the card, at most SD_LIST_MAX (links and folders are not files
+    here: the app that runs on the card can make them)."""
+    out = []
+    try:
+        with os.scandir(dfd) as it:
+            for e in it:
+                if e.name.startswith(SD_TMP):
+                    continue
+                st = e.stat(follow_symlinks=False)
+                if stat.S_ISREG(st.st_mode):
+                    out.append({"name": e.name, "size": st.st_size})
+    except OSError:
+        pass
+    out.sort(key=lambda f: f["name"])
+    return out[:SD_LIST_MAX]
+
+
+def sd_put(dfd, name, b64):
+    """Write one uploaded file onto the card; returns an error text, or None when it is stored."""
+    try:
+        return _sd_put(dfd, name, b64)
+    except (OSError, UnicodeError) as e:
+        return "the card refused it (%s)" % (getattr(e, "strerror", None) or "bad name")
+
+
+def _sd_put(dfd, name, b64):
+    if not sd_name_ok(name):
+        return "that file name is not allowed (no / or .., at most 64 characters)"
+    if not isinstance(b64, str) or len(b64) > SD_FILE_MAX * 4 // 3 + 8:
+        return "the file is bigger than 700 KB"
+    try:
+        data = base64.b64decode(b64, validate=True)
+    except ValueError:
+        return "the file did not arrive whole"
+    if len(data) > SD_FILE_MAX:
+        return "the file is bigger than 700 KB"
+    files = sd_files(dfd)
+    old = next((f["size"] for f in files if f["name"] == name), 0)
+    if sum(f["size"] for f in files) - old + len(data) > SD_TOTAL_MAX:
+        return "the card would hold more than 16 MB"
+    try:
+        st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
+        if not stat.S_ISREG(st.st_mode):
+            return "that name is taken by something that is not a file"
+    except FileNotFoundError:
+        pass
+    tmp = SD_TMP + uuid.uuid4().hex
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666, dir_fd=dfd)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.rename(tmp, name, src_dir_fd=dfd, dst_dir_fd=dfd)
+    except BaseException:
+        try:
+            os.unlink(tmp, dir_fd=dfd)
+        except OSError:
+            pass
+        raise
+    return None
+
+
+def sd_read(dfd, name):
+    """(bytes, None) of one file on the card, or (None, error text)."""
+    if not sd_name_ok(name):
+        return None, "that file name is not allowed"
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dfd)
+        with os.fdopen(fd, "rb") as f:
+            st = os.fstat(f.fileno())
+            if not stat.S_ISREG(st.st_mode):
+                return None, "no such file"
+            if st.st_size > SD_FILE_MAX:
+                return None, "the file is bigger than 700 KB"
+            return f.read(SD_FILE_MAX + 1), None
+    except (OSError, UnicodeError):
+        return None, "no such file"
+
+
 class Session:
     """One browser tab, one sim process."""
 
@@ -193,6 +318,8 @@ class Session:
         self.frame_evt = asyncio.Event()
         self.closed = False
         self.buttons = 0
+        self.sd_fd = None          # the card's directory, once the sim has started (sd_open)
+        self.sd_lock = asyncio.Lock()
 
     @property
     def peer(self):
@@ -281,6 +408,7 @@ class Session:
             "--ro-bind", str(elf), "/app.elf",
             "--bind", str(self.tmp), "/run/sim",
             "--bind", str(data), "/data",
+            *SD_MOUNT_ARGS,
             "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
             "--unshare-all", "--die-with-parent", "--new-session",
             "--setenv", "KODE_SIM_SOCK", "/run/sim/sim.sock",
@@ -306,6 +434,11 @@ class Session:
             raise RuntimeError("sim did not start: " + err.decode(errors="replace"))
         finally:
             server.close()
+        # The card, as a directory fd that stays this one directory whatever the app does to its files.
+        kid = sd_child_pid(self.proc.pid)
+        self.sd_fd = sd_open(kid) if kid else None
+        if self.sd_fd is None:
+            log.warning("sd: no access to the card of pid %s", self.proc.pid)
 
     async def pump_sim(self):
         """Records from the sim to the browser."""
@@ -393,6 +526,30 @@ class Session:
         if self.writer and not self.writer.is_closing():
             self.writer.write((line + "\n").encode())
 
+    async def sd_job(self, what, msg):
+        """One card request, its file work off the event loop; the answer goes to the page."""
+        loop = asyncio.get_running_loop()
+        err = None
+        try:
+            async with self.sd_lock:
+                if self.sd_fd is None:
+                    err = "the card is not available"
+                elif what == "put":
+                    err = await loop.run_in_executor(None, sd_put, self.sd_fd, msg.get("name"), msg.get("b64"))
+                elif what == "get":
+                    data, err = await loop.run_in_executor(None, sd_read, self.sd_fd, msg.get("name"))
+                    if not err:
+                        await self.send_json(sd_file={"name": msg["name"], "b64": base64.b64encode(data).decode()})
+                        return
+                kw = {"sd_files": await loop.run_in_executor(None, sd_files, self.sd_fd) if self.sd_fd is not None else []}
+        except (OSError, UnicodeError, ValueError, TypeError) as e:
+            err = "the card refused it (%s)" % e.__class__.__name__
+            kw = {"sd_files": []}
+        if err:
+            kw["sd_error"] = err
+        if not self.closed:
+            await self.send_json(**kw)
+
     def on_browser(self, msg):
         t = msg.get("t")
         if "console_in" in msg:
@@ -412,6 +569,15 @@ class Session:
             x = int(msg.get("x", 0))
             y = int(msg.get("y", 0))
             self.send_line(f"t {down} {x} {y}")
+        elif "sd" in msg:
+            v = msg["sd"]
+            self.send_line("s " + ("1" if (v.get("in") if isinstance(v, dict) else v) else "0"))
+        elif "sd_ls" in msg:
+            asyncio.ensure_future(self.sd_job("ls", {}))
+        elif "sd_put" in msg and isinstance(msg["sd_put"], dict):
+            asyncio.ensure_future(self.sd_job("put", msg["sd_put"]))
+        elif "sd_get" in msg and isinstance(msg["sd_get"], dict):
+            asyncio.ensure_future(self.sd_job("get", msg["sd_get"]))
         elif t == "dock":
             self.send_line(f"n sys dock {1 if msg.get('v') else 0}")
         elif t == "notify":
@@ -423,6 +589,12 @@ class Session:
     async def stop(self):
         self.leave_hub()
         self.closed = True
+        if self.sd_fd is not None:
+            try:
+                os.close(self.sd_fd)
+            except OSError:
+                pass
+            self.sd_fd = None
         if self.sender:
             await self.sender.stop()
         self.frame_evt.set()
