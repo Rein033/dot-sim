@@ -19,6 +19,7 @@ idf_component_register(
         "src/khal_gpio_sim.c"
         "src/khal_i2c_sim.c"
         "src/khal_misc_sim.c"
+        "src/khal_sdmmc_sim.c"
         "src/khal_system_sim.c"
         "src/kdotsim_bridge.c"
         "src/esp_timer_sim.c"

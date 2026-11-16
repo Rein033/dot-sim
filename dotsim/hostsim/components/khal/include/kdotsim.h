@@ -79,7 +79,12 @@ void kdotsim_battery_get(uint8_t *pct, bool *usb);
 void kdotsim_motion_set(const int32_t v[KDOTSIM_MOTION_N]);
 void kdotsim_motion_get(int32_t v[KDOTSIM_MOTION_N]);
 
-/** @brief Test probe (kdrv_probe_sim.c): what the SDK's drivers read back for "bat" or "imu", as the
+/** @brief The microSD card in the slot or not (the page's `s` line); khal_sdmmc_sim.c keeps it. The card is the
+ *         folder <data dir>/sd. */
+void kdotsim_sd_set(bool in);
+bool kdotsim_sd_in(void);
+
+/** @brief Test probe (kdrv_probe_sim.c): what the SDK's drivers read back for "bat", "imu" or "sd", as the
  *         text line the bridge answers with; returns its length, 0 when a driver is not up yet. */
 int kdotsim_probe(const char *what, char *out, size_t cap);
 

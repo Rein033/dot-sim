@@ -9,7 +9,7 @@ talks to this server over a unix socket (hostsim/components/khal/src/kdotsim_bri
       F frame (u16 w, u16 h, RGB565), E led rgb, B brightness, H haptic ms,
       T tone (u32 hz, u32 ms, u8 vol), P pcm (u32 rate, s16...), L log, X exit
       N link message (text) for the paired device
-  server -> sim: text lines "b <mask>", "t <0|1> <x> <y>", "q",
+  server -> sim: text lines "b <mask>", "t <0|1> <x> <y>", "s <0|1>" (microSD out/in), "q",
       "n <text>" (link message), "m <w> <h> <base64>" (mirror picture)
 
 Kode Link: two sessions of the same user (a "dot" and a "watch" role) are
@@ -32,6 +32,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 import hashlib
 import uuid
 import struct
@@ -49,7 +50,7 @@ ROOT = Path(__file__).parent
 STATIC = Path(os.environ.get("KODE_STATIC", ROOT.parent / "web"))       # ours, at /dotsim/
 KSWEB = Path(os.environ.get("KODE_KSWEB", ROOT.parent.parent / "web"))   # kode-sim's page, at /
 KSWEB_FILES = ("sim.js", "audio-worklet.js", "kode-dot.png", "kode-dot.json")
-PROBES = ("bat", "imu")    # "? <what>" typed in the console goes to the sim as its debug line
+PROBES = ("bat", "imu", "sd")    # "? <what>" typed in the console goes to the sim as its debug line
 PORT = int(os.environ.get("KODE_PORT", "8000"))
 BUILDS = Path(os.environ.get("KODE_BUILDS", "/opt/kode/builds"))
 DATA = Path(os.environ.get("KODE_DATA", "/opt/kode/data"))
@@ -174,6 +175,79 @@ class FrameSender:
                 pass
 
 
+# ---- The microSD's folder: names and sizes are checked here, never trusted from the page ----
+
+SD_FILE_MAX = 700 * 1024        # one upload
+SD_TOTAL_MAX = 16 * 1024 * 1024  # everything on the card, per session
+SD_NAME_MAX = 64
+
+
+def sd_name_ok(name):
+    """A plain file name: no path, no '..', not empty, at most 64 characters."""
+    return (isinstance(name, str) and 0 < len(name) <= SD_NAME_MAX
+            and "/" not in name and "\\" not in name and name != "." and ".." not in name
+            and not any(ord(c) < 32 or ord(c) == 127 for c in name))
+
+
+def sd_files(d):
+    """[{name, size}] of the regular files in the card's folder (links and folders are not files here:
+    the app that runs on the card can make them)."""
+    out = []
+    try:
+        for e in sorted(os.scandir(d), key=lambda e: e.name):
+            st = e.stat(follow_symlinks=False)
+            if stat.S_ISREG(st.st_mode):
+                out.append({"name": e.name, "size": st.st_size})
+    except OSError:
+        pass
+    return out
+
+
+def sd_put(d, name, b64):
+    """Write one uploaded file into the card's folder; returns an error text, or None when it is stored."""
+    if not sd_name_ok(name):
+        return "that file name is not allowed (no / or .., at most 64 characters)"
+    if not isinstance(b64, str) or len(b64) > SD_FILE_MAX * 4 // 3 + 8:
+        return "the file is bigger than 700 KB"
+    try:
+        data = base64.b64decode(b64, validate=True)
+    except ValueError:
+        return "the file did not arrive whole"
+    if len(data) > SD_FILE_MAX:
+        return "the file is bigger than 700 KB"
+    old = next((f["size"] for f in sd_files(d) if f["name"] == name), 0)
+    if sum(f["size"] for f in sd_files(d)) - old + len(data) > SD_TOTAL_MAX:
+        return "the card would hold more than 16 MB"
+    d = Path(d)
+    d.mkdir(parents=True, exist_ok=True)
+    tmp = d.parent / (".put-" + uuid.uuid4().hex)
+    try:
+        tmp.write_bytes(data)
+        if (d / name).is_symlink() or (d / name).is_dir():
+            return "that name is taken by something that is not a file"
+        os.replace(tmp, d / name)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return None
+
+
+def sd_read(d, name):
+    """(bytes, None) of one file on the card, or (None, error text)."""
+    if not sd_name_ok(name):
+        return None, "that file name is not allowed"
+    try:
+        fd = os.open(Path(d) / name, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return None, "no such file"
+    with os.fdopen(fd, "rb") as f:
+        st = os.fstat(f.fileno())
+        if not stat.S_ISREG(st.st_mode):
+            return None, "no such file"
+        if st.st_size > SD_FILE_MAX:
+            return None, "the file is bigger than 700 KB"
+        return f.read(SD_FILE_MAX + 1), None
+
+
 class Session:
     """One browser tab, one sim process."""
 
@@ -193,6 +267,7 @@ class Session:
         self.frame_evt = asyncio.Event()
         self.closed = False
         self.buttons = 0
+        self.sd_dir = None         # the card's folder, once the sim has started
 
     @property
     def peer(self):
@@ -263,6 +338,10 @@ class Session:
         sock_path = self.tmp / "sim.sock"
         data = DATA / self.app_id
         data.mkdir(parents=True, exist_ok=True)
+        # The card is the session's own: <data>/sd in the sim, a folder that goes with the session.
+        self.sd_dir = self.tmp / "sd"
+        self.sd_dir.mkdir()
+        os.chmod(self.sd_dir, 0o777)
 
         connected = asyncio.get_running_loop().create_future()
 
@@ -281,6 +360,7 @@ class Session:
             "--ro-bind", str(elf), "/app.elf",
             "--bind", str(self.tmp), "/run/sim",
             "--bind", str(data), "/data",
+            "--bind", str(self.sd_dir), "/data/sd",
             "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
             "--unshare-all", "--die-with-parent", "--new-session",
             "--setenv", "KODE_SIM_SOCK", "/run/sim/sim.sock",
@@ -393,6 +473,13 @@ class Session:
         if self.writer and not self.writer.is_closing():
             self.writer.write((line + "\n").encode())
 
+    def sd_reply(self, err=None):
+        """The card's files to the page, and what went wrong with its last request, if anything."""
+        kw = {"sd_files": sd_files(self.sd_dir) if self.sd_dir else []}
+        if err:
+            kw["sd_error"] = err
+        asyncio.ensure_future(self.send_json(**kw))
+
     def on_browser(self, msg):
         t = msg.get("t")
         if "console_in" in msg:
@@ -412,6 +499,21 @@ class Session:
             x = int(msg.get("x", 0))
             y = int(msg.get("y", 0))
             self.send_line(f"t {down} {x} {y}")
+        elif "sd" in msg:
+            v = msg["sd"]
+            self.send_line("s " + ("1" if (v.get("in") if isinstance(v, dict) else v) else "0"))
+        elif "sd_ls" in msg:
+            self.sd_reply()
+        elif "sd_put" in msg and isinstance(msg["sd_put"], dict):
+            err = sd_put(self.sd_dir, msg["sd_put"].get("name"), msg["sd_put"].get("b64")) if self.sd_dir else "no card yet"
+            self.sd_reply(err)
+        elif "sd_get" in msg and isinstance(msg["sd_get"], dict):
+            name = msg["sd_get"].get("name")
+            data, err = sd_read(self.sd_dir, name) if self.sd_dir else (None, "no card yet")
+            if err:
+                self.sd_reply(err)
+            else:
+                asyncio.ensure_future(self.send_json(sd_file={"name": name, "b64": base64.b64encode(data).decode()}))
         elif t == "dock":
             self.send_line(f"n sys dock {1 if msg.get('v') else 0}")
         elif t == "notify":

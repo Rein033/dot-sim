@@ -15,7 +15,7 @@
  *     glass while no app runs (the home screen is ours, see home.js).
  *   - then it loads the theme and the rest: english.js (kode-sim's Spanish to
  *     English), shell.js (header, mode switch, footer), home.js (Dash and the
- *     app grid), editor.js (the code editor).
+ *     app grid), editor.js (the code editor), parts.js (the board's parts: the microSD and what comes next).
  *
  * Not made, approved or supported by Kode.
  */
@@ -102,6 +102,7 @@
 
   window.onJson = (j) => {
     if (j.t) ours(j);
+    DS.emit('json', j);                  // the parts (parts.js) listen for their own keys
     sim.onJson(j);
   };
 
@@ -321,7 +322,7 @@
     if (T.font && T.font.css) DS.css(T.font.css);
     DS.css(BASE + 'shell.css');
     DS.css(BASE + 'theme/theme.css');
-    for (const f of ['theme/dash.js', 'english.js', 'shell.js', 'home.js', 'editor.js']) await script(BASE + f);
+    for (const f of ['theme/dash.js', 'english.js', 'shell.js', 'home.js', 'editor.js', 'parts.js']) await script(BASE + f);
     window.setState('off');
     try { await DS.loadApps(); } catch (e) { DS.log('server not reachable'); }
     DS.ready = true;
