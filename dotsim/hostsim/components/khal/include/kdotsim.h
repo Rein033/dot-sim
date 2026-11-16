@@ -69,6 +69,16 @@ int kdotsim_link_recv(char *buf, size_t cap);
 /** @brief Copy a new mirror picture of the paired device's screen; false when none arrived. */
 bool kdotsim_mirror(uint16_t *dst, uint16_t *w, uint16_t *h, size_t cap_px);
 
+/** @brief The battery's charge in percent and whether USB power is attached (the page's `p` line). */
+void kdotsim_battery_set(uint8_t pct, bool usb);
+void kdotsim_battery_get(uint8_t *pct, bool *usb);
+
+/** @brief Motion sensors (the page's `i` line), in this order: acceleration x y z in milli-g,
+ *         rotation x y z in milli-degrees/s, magnetic field x y z in milligauss, temperature in tenths of a degree. */
+#define KDOTSIM_MOTION_N 10U
+void kdotsim_motion_set(const int32_t v[KDOTSIM_MOTION_N]);
+void kdotsim_motion_get(int32_t v[KDOTSIM_MOTION_N]);
+
 /* ---- The board, below the drivers: the I2C chips and the GPIO lines ---- */
 
 /** @brief Called by the GPIO model when an input line changes (from the bridge). */

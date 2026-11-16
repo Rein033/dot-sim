@@ -15,6 +15,14 @@
  *   "t <0|1> <x> <y>"     touch up/down at a screen pixel
  *   "n <text>"            a link message from the paired device or the hub
  *   "m <w> <h> <base64>"  a mirror picture of the paired device's screen (RGB565 LE)
+ *   "p <pct> <usb>"       battery charge in percent, USB power attached 0|1
+ *   "i <ax> <ay> <az> <gx> <gy> <gz> <mx> <my> <mz> <temp>"
+ *                         motion: milli-g, milli-degrees/s, milligauss, tenths of a degree
+ *                         (board axes: x right, y toward the top, z out of the glass)
+ *   "c <text>"            a console line: echoed back as an 'L' record "> <text>" and
+ *                         written, with a newline, to the firmware's stdin
+ *   "? bat" / "? imu"     ask for the model's state (for tests): answered as 'L' records
+ *                         "bat <pct> <usb>" and "imu <ten values>"
  *
  * Without KODE_SIM_SOCK the sim runs headless; KODE_SIM_SNAP=<file.ppm> then
  * writes the last frame there (at most twice a second) for tests.
@@ -22,6 +30,7 @@
 #include "kdotsim.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdatomic.h>
@@ -48,6 +57,7 @@ static atomic_bool s_touch_down;
 static atomic_uint s_touch_xy;
 static atomic_bool s_started;
 static char s_data_dir[512];
+static int s_stdin_w = -1;   /* write end of the pipe that is the firmware's stdin */
 
 /* Link messages in, until the app takes them. */
 #define LINK_SLOTS 32U
@@ -304,6 +314,68 @@ static void handle_line(char *line)
             }
         }
     }
+    else if ( ('p' == line[0]) && (' ' == line[1]) )
+    {
+        int pct = 0, usb = 0;
+        if ( sscanf(line + 2, "%d %d", &pct, &usb) == 2 )
+        {
+            kdotsim_battery_set((uint8_t)((pct < 0) ? 0 : ((pct > 100) ? 100 : pct)), usb != 0);
+        }
+    }
+    else if ( ('i' == line[0]) && (' ' == line[1]) )
+    {
+        int32_t v[KDOTSIM_MOTION_N];
+        int off = 0;
+        char const *p = line + 2;
+        unsigned n = 0U;
+        while ( (n < KDOTSIM_MOTION_N) && (sscanf(p, "%d%n", &v[n], &off) == 1) )
+        {
+            p += off;
+            ++n;
+        }
+        if ( KDOTSIM_MOTION_N == n )
+        {
+            kdotsim_motion_set(v);
+        }
+    }
+    else if ( ('c' == line[0]) && (' ' == line[1]) )
+    {
+        char echo[LINK_LEN + 4U];
+        int const n = snprintf(echo, sizeof(echo), "> %s\n", line + 2);
+        kdotsim_log(echo, (size_t)((n < (int)sizeof(echo)) ? n : (int)sizeof(echo) - 1));
+        if ( s_stdin_w >= 0 )
+        {
+            char in[LINK_LEN + 2U];
+            int const m = snprintf(in, sizeof(in), "%s\n", line + 2);
+            if ( m > 0 )
+            {
+                (void)!write(s_stdin_w, in, (size_t)((m < (int)sizeof(in)) ? m : (int)sizeof(in) - 1));
+            }
+        }
+    }
+    else if ( ('?' == line[0]) && (' ' == line[1]) )
+    {
+        char out[160];
+        int n = 0;
+        if ( 0 == strncmp(line + 2, "bat", 3U) )
+        {
+            uint8_t pct;
+            bool usb;
+            kdotsim_battery_get(&pct, &usb);
+            n = snprintf(out, sizeof(out), "bat %u %u\n", (unsigned)pct, usb ? 1U : 0U);
+        }
+        else if ( 0 == strncmp(line + 2, "imu", 3U) )
+        {
+            int32_t v[KDOTSIM_MOTION_N];
+            kdotsim_motion_get(v);
+            n = snprintf(out, sizeof(out), "imu %d %d %d %d %d %d %d %d %d %d\n", (int)v[0], (int)v[1],
+                         (int)v[2], (int)v[3], (int)v[4], (int)v[5], (int)v[6], (int)v[7], (int)v[8], (int)v[9]);
+        }
+        if ( n > 0 )
+        {
+            kdotsim_log(out, (size_t)n);
+        }
+    }
     else if ( 'q' == line[0] )
     {
         kdotsim_exit("stopped");
@@ -374,6 +446,15 @@ void kdotsim_start(void)
         {
             s_fd = fd;
             s_ring = malloc(RING_BYTES);
+            /* Console lines from the page arrive on stdin, as from a terminal. */
+            int pf[2];
+            if ( pipe(pf) == 0 )
+            {
+                (void)dup2(pf[0], 0);
+                (void)close(pf[0]);
+                s_stdin_w = pf[1];
+                (void)fcntl(s_stdin_w, F_SETFL, fcntl(s_stdin_w, F_GETFL) | O_NONBLOCK);
+            }
             pthread_t t;
             (void)pthread_create(&t, NULL, reader, NULL);
             (void)pthread_detach(t);
