@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Firmware bug or SDK proposal
+    url: https://github.com/kodediy/kode-sdk/issues/new/choose
+    about: Drivers, Active Objects, the kode facade and the examples live in kode-sdk. A bug that also shows on a real Kode Dot belongs there (or in KodeOS).
+  - name: Questions and chat
+    url: https://discord.gg/gZSNXRytFV
+    about: Kode's Discord, for questions, ideas and showing what you built.
+  - name: Documentation
+    url: https://docs.kode.diy
+    about: The Kode Dot, kodeOS and the SDK, explained.

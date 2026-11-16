@@ -1,0 +1,60 @@
+# The host suites on every push and pull request: the Rust crates (fmt,
+# clippy, tests), the binary from outside against the fake esp-emu, the
+# page's sim.js in node, and kemu's C side. The emulator suite (pytest -m
+# emu: ESP-IDF v6.1 and esp-emu, ~10 min on an M-series Mac) is run by hand
+# before a release, as docs/RELEASING.md says.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host:
+    name: host (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux on every pull request; the Mac, which kode-sim is made for,
+        # too on main, tags and by hand (its minutes cost more).
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest","macos-14"]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: mtools (formats the microSD image; the Mac falls back on diskutil)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mtools
+
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Python tools for the tests
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q -r tests/requirements.txt
+
+      - name: host suites
+        run: tools/host_tests.sh

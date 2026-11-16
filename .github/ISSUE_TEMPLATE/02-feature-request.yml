@@ -1,0 +1,37 @@
+name: Feature request
+description: Something the simulator should do that it does not do yet.
+type: Feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with the problem, not the solution. Check the [status table and the plans](https://github.com/kodediy/kode-sim#status) first: several parts of the Kode Dot wait for Espressif's emulator, and the table says which.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before you file
+      options:
+        - label: I have searched the [open and closed issues](https://github.com/kodediy/kode-sim/issues?q=is%3Aissue) and the status table, and found nothing that covers this.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and what gets in the way today.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you would like to happen, on the page, in the terminal or in the firmware.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

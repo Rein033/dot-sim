@@ -1,0 +1,8 @@
+# kemu reaches into esp_codec_dev's interfaces (the codec's control and data
+# paths) and so names it; any version the project's own kdrv pins will do.
+#
+# The IP101 is the PHY esp-emu puts behind the P4's EMAC (kemu_net.c); IDF 6
+# keeps PHY drivers in the registry.
+dependencies:
+  espressif/esp_codec_dev: "*"
+  espressif/ip101: "^1.1.0"

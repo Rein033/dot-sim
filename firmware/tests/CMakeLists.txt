@@ -1,0 +1,23 @@
+cmake_minimum_required(VERSION 3.16)
+project(kemu_host_tests C)
+set(CMAKE_C_STANDARD 11)
+enable_testing()
+set(KEMU ${CMAKE_CURRENT_LIST_DIR}/../kemu)
+if(NOT KODE_SDK)
+    set(KODE_SDK ${CMAKE_CURRENT_LIST_DIR}/../../.cache/kode-sdk)
+endif()
+add_executable(test_frame test_frame.c ${KEMU}/src/kemu_frame.c)
+target_include_directories(test_frame PRIVATE ${KEMU}/include)
+target_compile_options(test_frame PRIVATE -Wall -Wextra -Werror)
+add_test(NAME frame COMMAND test_frame)
+
+
+add_executable(test_sdcard test_sdcard.c ${KEMU}/models/sdcard.c)
+target_include_directories(test_sdcard PRIVATE ${KEMU}/models)
+target_compile_options(test_sdcard PRIVATE -Wall -Wextra -Werror)
+add_test(NAME sdcard COMMAND test_sdcard)
+
+add_executable(test_usbdcd test_usbdcd.c ${KEMU}/models/usbdcd.c)
+target_include_directories(test_usbdcd PRIVATE ${KEMU}/models)
+target_compile_options(test_usbdcd PRIVATE -Wall -Wextra -Werror)
+add_test(NAME usbdcd COMMAND test_usbdcd)

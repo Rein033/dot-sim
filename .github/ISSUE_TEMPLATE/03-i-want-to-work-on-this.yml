@@ -1,0 +1,28 @@
+name: I want to work on this
+description: Say what you are building, so that the work happens once - here - and not in several simulators at a time.
+type: Task
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If you are writing a Kode Dot simulator of your own, or a piece of one (a chip model, a screen, a tool), tell us here first. We will say whether it fits, where it goes in the code and what it touches, and nobody else starts the same thing.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What you want to build
+      description: The part of the Kode Dot, or the feature, and what it should do.
+    validations:
+      required: true
+
+  - type: textarea
+    id: how
+    attributes:
+      label: How you plan to do it
+      description: The approach, and the files or crates you expect to touch. A link to code you already have is welcome.
+
+  - type: textarea
+    id: done
+    attributes:
+      label: How we will know it works
+      description: The test, the app or the steps that show it working.

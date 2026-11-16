@@ -1,0 +1,7 @@
+# kode-sim is the Rust binary (crates/kode-sim). This file is only the
+# pytest configuration of its tests; their tools are in tests/requirements.txt.
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["emu: builds firmware and boots it in esp-emu (slow)"]

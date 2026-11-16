@@ -1,0 +1,30 @@
+# Every new pull request is assigned to the one who reviews and merges them,
+# so none waits unseen. pull_request_target, as a pull request from a fork
+# gets no token that may write otherwise; it checks nothing out and runs
+# nothing from the pull request.
+name: assign
+
+on:
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign the owner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          OWNER: mquerostudio
+        run: |
+          if ! gh api --method POST "repos/$REPO/issues/$PR/assignees" \
+                 -f "assignees[]=$OWNER" --jq '.assignees[].login' \
+               | grep -qx "$OWNER"; then
+            echo "::error::GitHub did not assign $OWNER to #$PR" >&2
+            exit 1
+          fi

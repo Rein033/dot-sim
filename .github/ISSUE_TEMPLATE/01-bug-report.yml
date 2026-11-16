@@ -1,0 +1,98 @@
+name: Bug report
+description: The simulator does something a Kode Dot would not - a crash, a hang, a screen, a sound or a part that behaves wrong.
+type: Bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One issue per problem, please. If the same thing happens on a real Kode Dot, the fault is in the firmware: file it in [kode-sdk](https://github.com/kodediy/kode-sdk/issues/new/choose) or [KodeOS](https://github.com/kodediy/KodeOS/issues/new/choose) instead.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before you file
+      options:
+        - label: I have searched the [open and closed issues](https://github.com/kodediy/kode-sim/issues?q=is%3Aissue) and found nothing that covers this.
+          required: true
+        - label: I have reproduced it on the latest release, or on `main`.
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: kode-sim version and computer
+      description: "`kode-sim --version`, and your system: for example macOS 15 on an M2, or Ubuntu 24.04 on x86_64."
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: What you ran
+      description: The command, and the firmware it ran (kodeOS, an app, a kode-sdk example) with the version or commit of each.
+      placeholder: kode-sim run --sdk ~/kode-sdk ~/kode-sdk/examples/display_lvgl
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Where the problem shows. "Not sure" is a fine answer.
+      options:
+        - Build (kode-sim build)
+        - Window and page
+        - Screen and touch
+        - Buttons and LED
+        - Sound and microphone
+        - Battery and charger
+        - microSD
+        - WiFi and network
+        - USB (the page's computer)
+        - Motion (IMU, magnetometer)
+        - Installing apps (kode-sim install)
+        - Reviews (kode-sim review)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: What you saw, as precisely as you can. Quote messages exactly.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What a Kode Dot does in the same case, if you know it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console and terminal output
+      description: What the terminal that runs kode-sim printed around the failure, and the page's console ("Ajustes" > Consola). For a crash, from the first error line to the end.
+      render: text
+
+  - type: textarea
+    id: capture
+    attributes:
+      label: Screenshots or video
+      description: Drag them here.

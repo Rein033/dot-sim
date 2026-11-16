@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kode Dot Simulator</title>
+<script>if (new URLSearchParams(location.search).has("embed")) document.documentElement.classList.add("embed");</script>
+<style>
+  :root {
+    --bg: #17181a;
+    --panel: #212226;
+    --line: #33353a;
+    --text: #e8e6e1;
+    --muted: #9a9890;
+    --accent: #2fa8e6;
+    --warn: #e8a33a;
+    --bad: #e2514c;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { display: flex; height: 100%; gap: 16px; padding: 16px; }
+
+  /* ---- The device: the render, with the glass and the controls on it ---- */
+  #stage { flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
+    min-width: 0; min-height: 0; }
+  #device { position: relative; width: 602px; height: 979px; transform-origin: center;
+    flex: none; user-select: none; -webkit-user-select: none; }
+  #device img.body { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  #device.shake { animation: shake 70ms linear infinite; }
+  @keyframes shake {
+    0% { translate: 0 0; } 25% { translate: var(--amp) 0; }
+    50% { translate: 0 calc(var(--amp) * -0.6); } 75% { translate: calc(var(--amp) * -1) 0; }
+  }
+  #glass { position: absolute; left: 96px; top: 100px; width: 410px; height: 502px;
+    border-radius: 115px; overflow: hidden; background: #000; touch-action: none; cursor: crosshair; }
+  #glass canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+  #dim { position: absolute; inset: 0; background: #000; opacity: 1; pointer-events: none; }
+  #banner { position: absolute; inset: 0; display: none; flex-direction: column; gap: 12px;
+    align-items: center; justify-content: center; text-align: center; padding: 48px;
+    background: rgba(0,0,0,.82); color: #fff; }
+  #banner.show { display: flex; }
+  #banner pre { max-height: 220px; overflow: auto; text-align: left; font: 11px/1.35 var(--mono);
+    color: #f1b3b0; white-space: pre-wrap; margin: 0; }
+  #banner button, .side button { font: inherit; color: var(--text); background: #2c2e33;
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 14px; cursor: pointer; }
+  #banner button:hover, .side button:hover { border-color: var(--accent); }
+  .upload { font: inherit; color: var(--text); background: #2c2e33; border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 14px; cursor: pointer; }
+  .upload:hover { border-color: var(--accent); }
+  .btn { position: absolute; cursor: pointer; }
+  .btn.round { border-radius: 50%; }
+  .btn.down { background: rgba(0,0,0,.28); }
+  /* The light guide in the top-right corner of the render (led_guide_px). */
+  #led { position: absolute; left: 505px; top: 37px; width: 59px; height: 59px; border-radius: 50%;
+    pointer-events: none; opacity: 0; transition: opacity 60ms; }
+
+  /* ---- The side panel ---- */
+  .side { flex: 0 0 380px; display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .card h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin: 0 0 8px; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row + .row { margin-top: 8px; }
+  #state { font-weight: 600; }
+  #state.running { color: #6fd08c; } #state.off { color: var(--muted); } #state.crashed { color: var(--bad); }
+  #state.busy { color: var(--warn); }
+  #sound { color: var(--warn); }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .console { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+  #log { flex: 1 1 auto; overflow: auto; font: 11.5px/1.4 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
+    margin: 0; color: #cfcdc6; min-height: 120px; }
+  #log .e { color: #f19b96; } #log .w { color: #e9c27a; }
+  #cmd { margin-top: 8px; width: 100%; font: 12px var(--mono); color: var(--text); background: #18191c;
+    border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; }
+  #cmd:focus { outline: none; border-color: var(--accent); }
+  .keys { color: var(--muted); font-size: 12px; }
+  kbd { font: 11px var(--mono); background: #2c2e33; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+
+
+  /* ---- ?embed=1: the page inside another page (an iframe): the device takes what the frame gives
+     it, the controls stay in a compact strip under it, the console short ---- */
+  .embed main { flex-direction: column; height: 100%; padding: 6px; gap: 6px; }
+  .embed #stage { flex: 1 1 0; }
+  .embed .side { flex: 0 0 auto; gap: 6px; max-height: 45%; overflow: auto; }
+  .embed .card { padding: 8px 10px; }
+  .embed .card h2, .embed .keys, .embed #sound { display: none; }
+  .embed .console { flex: 0 0 auto; }
+  .embed #log { min-height: 0; height: 70px; }
+  /* only the power row until "Más" opens the rest (card with the install, battery, USB, SD; the console) */
+  .embed:not(.more) .side .card:not(:first-child), .embed:not(.more) .side .card .row:not(:first-of-type) { display: none; }
+  .embed.more .side { max-height: 60%; }
+  #more { display: none; }
+  .embed #more { display: inline-block; }
+
+  /* ---- The window: the Kode Dot alone; "Ajustes" slides the controls and the console over it ---- */
+  #settings { position: fixed; top: 12px; left: 12px; z-index: 11; display: inline-flex; align-items: center; gap: 6px;
+    font: inherit; font-size: 13px; color: var(--text); background: #2c2e33cc; border: 1px solid var(--line);
+    border-radius: 999px; padding: 6px 12px; cursor: pointer; backdrop-filter: blur(6px); }
+  #settings:hover { border-color: var(--accent); }
+  #settings .close { display: none; }
+  .panel #settings .open { display: none; }
+  .panel #settings .close { display: inline; }
+  html:not(.embed) .side { position: fixed; top: 0; right: 0; bottom: 0; z-index: 10; width: min(400px, 94vw);
+    overflow: auto; padding: 56px 14px 14px; background: var(--bg); border-left: 1px solid var(--line);
+    box-shadow: -12px 0 32px #0008; transform: translateX(105%); transition: transform 180ms ease; }
+  html.panel:not(.embed) .side { transform: none; }
+  .embed #settings { display: none; }
+
+  @media (max-width: 900px) {
+    main { flex-direction: column; height: auto; }
+    .side { flex-basis: auto; }
+    #log { max-height: 40vh; }
+  }
+  /* ---- Motion: what the IMU and the magnetometer measure ---- */
+  #motioncard .row { gap: 8px; } #motioncard label.k { width: 74px; color: var(--muted); font-size: 12px; }
+  #motioncard input[type=range] { flex: 1; } #motioncard .v { width: 56px; text-align: right; font: 12px var(--mono); }
+  #motioncard .read { font: 11px/1.4 var(--mono); color: var(--muted); }
+
+  /* ---- The computer on the USB cable (usbhost.rs) ---- */
+  #usbcard .st { font-weight: 600; } #usbcard .st.mounted, #usbcard .st.keyboard { color: #6fd08c; }
+  #usbcard .st.failed { color: var(--bad); } #usbcard .st.waiting, #usbcard .st.enumerating, #usbcard .st.ejected { color: var(--warn); }
+  #usbcard .muted { color: var(--muted); font-size: 12px; }
+  #usbcard ul { list-style: none; margin: 0; padding: 0; max-height: 120px; overflow: auto; font: 12px var(--mono); }
+  #usbcard li { display: flex; gap: 8px; padding: 2px 0; cursor: pointer; } #usbcard li:hover { color: var(--accent); }
+  #usbcard li .sz { margin-left: auto; color: var(--muted); }
+  #usbtyped { font: 12px var(--mono); background: #18191c; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+    min-height: 34px; max-height: 90px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; width: 100%; box-sizing: border-box; }
+  #usblog { font: 11px/1.35 var(--mono); max-height: 110px; overflow: auto; white-space: pre-wrap; margin: 0; color: #cfcdc6; }
+  #usbcard select { font: inherit; color: var(--text); background: #2c2e33; border: 1px solid var(--line); border-radius: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <button id="settings" title="Batería, USB, tarjeta SD, movimiento, instalar una app y la consola"><span class="open">⚙ Ajustes</span><span class="close">✕ Cerrar</span></button>
+  <div id="stage">
+    <div id="device">
+      <img class="body" src="kode-dot.png" alt="Kode Dot">
+      <div id="glass">
+        <canvas id="screen" width="410" height="502"></canvas>
+        <div id="dim"></div>
+        <div id="banner"></div>
+      </div>
+      <div id="led"></div>
+      <!-- From kode-dot.json: the D-pad centred at (198.8, 801.4), arms 74 wide;
+           TOP and BOT 119 across. -->
+      <div class="btn" data-btn="up"    style="left:162px;top:674px;width:74px;height:90px"></div>
+      <div class="btn" data-btn="down"  style="left:162px;top:838px;width:74px;height:90px"></div>
+      <div class="btn" data-btn="left"  style="left:72px;top:764px;width:90px;height:74px"></div>
+      <div class="btn" data-btn="right" style="left:236px;top:764px;width:90px;height:74px"></div>
+      <div class="btn round" data-btn="top" style="left:402px;top:672px;width:119px;height:119px"></div>
+      <div class="btn round" data-btn="bot" style="left:344px;top:812px;width:119px;height:119px"></div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card">
+      <h2>Kode Dot</h2>
+      <div class="row"><span id="state" class="off">conectando…</span>
+        <span style="flex:1"></span><button id="more" title="Batería, USB, tarjeta SD, instalar una app y la consola">Más</button><button id="reset" title="Reinicia el chip, como el circuito de reset de la placa (abajo + izquierda 1 s)">Reset</button><button id="power">Encender</button></div>
+      <div class="row"><span id="sound">Haz clic en el dispositivo para activar el sonido</span></div>
+      <div class="row"><label title="Lo que oye el micrófono del Mac llega al del Kode Dot. Apagado, el Kode Dot oye solo su altavoz y su ruido de fondo"><input id="micin" type="checkbox"> Micrófono del Mac</label></div>
+      <div class="row"><label class="upload" title="Una app compilada para el simulador: kode-sim build tu-app imprime su .bin">Instalar app (.bin)<input id="app" type="file" accept=".bin" hidden></label></div>
+    </div>
+    <div class="card">
+      <h2>Batería</h2>
+      <div class="row"><input id="pct" type="range" min="0" max="100" value="80"><span id="pctv">80 %</span></div>
+      <div class="row"><label><input id="usb" type="checkbox" checked> USB conectado</label></div>
+      <div class="row"><label><input id="sdin" type="checkbox"> SD insertada</label></div>
+      <div class="row keys">KodeOS lo sigue como a una batería real: calcula el % por la tensión y lo mueve como mucho 2 puntos cada 2 s.</div>
+    </div>
+    <div class="card" id="motioncard">
+      <h2>Movimiento (IMU y brújula)</h2>
+      <div class="row"><label class="k" for="mpitch">Cabeceo</label><input id="mpitch" type="range" min="-90" max="90" value="0"><span class="v" id="mpitchv">0°</span></div>
+      <div class="row"><label class="k" for="mroll">Alabeo</label><input id="mroll" type="range" min="-180" max="180" value="0"><span class="v" id="mrollv">0°</span></div>
+      <div class="row"><label class="k" for="mhead">Rumbo</label><input id="mhead" type="range" min="0" max="359" value="0"><span class="v" id="mheadv">0° N</span></div>
+      <div class="row"><label class="k" for="mmag">Imán</label><input id="mmag" type="range" min="10" max="160" value="160" title="Distancia del imán a la parte trasera, en mm; al final, sin imán"><span class="v" id="mmagv">sin imán</span></div>
+      <div class="row"><button id="mshake" title="Una sacudida de 1,2 s">Sacudir</button><button id="mflat" title="Plano, mirando al norte, sin imán">Plano</button><span style="flex:1"></span></div>
+      <div class="row read" id="mread"></div>
+    </div>
+    <div class="card" id="usbcard">
+      <h2>Ordenador (USB)</h2>
+      <div class="row"><span id="usbst" class="st">sin cable</span><span style="flex:1"></span>
+        <button id="usbplug" title="Conecta o desconecta el cable USB entre el Kode Dot y este ordenador simulado">Conectar cable</button>
+        <button id="usbeject" hidden title="Expulsar el disco, como el sistema operativo antes de sacar el cable">Expulsar</button></div>
+      <div class="row muted" id="usbdev" hidden></div>
+      <div id="usbdisk" hidden>
+        <div class="row muted" id="usbvol"></div>
+        <div class="row"><ul id="usbfiles" style="flex:1"></ul></div>
+        <div class="row"><label class="upload" title="Copia un archivo (hasta 700 KB) a la raíz del disco">Copiar un archivo<input id="usbput" type="file" hidden></label>
+          <button id="usbrand" title="Copia 1 MB de bytes aleatorios para medir la velocidad">Copiar 1 MB</button></div>
+        <div class="row muted" id="usblast"></div>
+      </div>
+      <div id="usbkbd" hidden>
+        <div class="row"><span class="muted">El teclado escribe:</span><span style="flex:1"></span>
+          <select id="usblayout" title="Distribución del teclado del ordenador"><option value="es">ES</option><option value="us">US</option></select>
+          <button id="usbclear">Borrar</button></div>
+        <div class="row"><pre id="usbtyped"></pre></div>
+      </div>
+      <details class="row" style="margin-top:8px"><summary class="muted">Lo que hace el ordenador</summary><pre id="usblog"></pre></details>
+    </div>
+    <div class="card console">
+      <h2>Consola</h2>
+      <pre id="log"></pre>
+      <input id="cmd" placeholder="help" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="keys">Teclas: <kbd>T</kbd> arriba · <kbd>B</kbd> abajo · <kbd>←↑→↓</kbd> cruceta · clic en el cristal = dedo · <kbd>B</kbd>+<kbd>←</kbd> 1 s = reset · en una app, <kbd>B</kbd> mantenido vuelve a KodeOS</div>
+  </div>
+</main>
+<script src="sim.js"></script>
+</body>
+</html>

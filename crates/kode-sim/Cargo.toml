@@ -1,0 +1,28 @@
+[package]
+name = "kode-sim"
+version = "0.2.0"
+description = "A Kode Dot on the desk: unchanged Kode Dot firmware on esp-emu, with the board's chips beside it"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "kode-sim"
+path = "src/main.rs"
+
+[dependencies]
+kodedot-chips = { path = "../kodedot-chips" }
+cosim = { path = "../cosim" }
+clap = { version = "4", features = ["derive", "env"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "io-std", "process", "signal", "sync", "time"] }
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.6", features = ["fs"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+bytes = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
+regex = "1"
+fancy-regex = "0.20"
+flate2 = "1"
+sha1 = "0.10"
+libc = "0.2"
+base64 = "0.22"
+fatfs = { version = "0.3.6", default-features = false, features = ["std", "alloc"] }
