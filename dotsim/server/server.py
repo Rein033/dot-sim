@@ -17,7 +17,9 @@ paired through the hub below. On hardware this would be BLE; the apps see the
 same thing: text messages both ways, plus "hub peer 0|1" and "sys ..." from
 the hub itself.
 
-To the browser: binary 'J'+jpeg or 'P'+rate(u32)+pcm, and JSON text for the rest.
+To the browser, on /ws (kode-sim's page, web/ at /, with dotsim/web/ext.js on it):
+KD frames (kdwire.py; the screen as FB_JPEG) and JSON text. On /ws-legacy (no
+page uses it now): binary 'J'+jpeg or 'P'+rate(u32)+pcm, and JSON text.
 
 Not made, approved or supported by Kode.
 """
@@ -44,7 +46,10 @@ from PIL import Image
 import kdwire
 
 ROOT = Path(__file__).parent
-STATIC = Path(os.environ.get("KODE_STATIC", ROOT.parent / "web"))
+STATIC = Path(os.environ.get("KODE_STATIC", ROOT.parent / "web"))       # ours, at /dotsim/
+KSWEB = Path(os.environ.get("KODE_KSWEB", ROOT.parent.parent / "web"))   # kode-sim's page, at /
+KSWEB_FILES = ("sim.js", "audio-worklet.js", "kode-dot.png", "kode-dot.json")
+PROBES = ("bat", "imu")    # "? <what>" typed in the console goes to the sim as its debug line
 PORT = int(os.environ.get("KODE_PORT", "8000"))
 BUILDS = Path(os.environ.get("KODE_BUILDS", "/opt/kode/builds"))
 DATA = Path(os.environ.get("KODE_DATA", "/opt/kode/data"))
@@ -174,7 +179,7 @@ class Session:
 
     def __init__(self, ws, app_id, role="dot", user="", sender=None):
         self.ws = ws
-        self.sender = sender   # set on the KD socket (/ws-kd), None on the JSON one
+        self.sender = sender   # set on the KD socket (/ws), None on the JSON one (/ws-legacy)
         self.app_id = app_id
         self.role = role
         self.user = user
@@ -391,6 +396,10 @@ class Session:
     def on_browser(self, msg):
         t = msg.get("t")
         if "console_in" in msg:
+            text = str(msg["console_in"]).strip()
+            if text.startswith("?") and text[1:].strip() in PROBES:
+                self.send_line("? " + text[1:].strip())
+                return
             for line in kdwire.kd_to_sim_lines(kdwire.CONSOLE_IN, str(msg["console_in"]).encode()):
                 self.send_line(line)
         elif t == "btn":
@@ -747,7 +756,13 @@ async def api_play(request):
 
 
 async def index(request):
-    return web.FileResponse(STATIC / "index.html")
+    return web.FileResponse(KSWEB / "index.html")
+
+
+def ksweb_file(name):
+    async def handler(request):
+        return web.FileResponse(KSWEB / name)
+    return handler
 
 
 async def docs_page(request):
@@ -782,12 +797,13 @@ async def status(request):
     })
 
 
-async def ws_handler(request):
+async def ws_legacy_handler(request):
+    """The JSON socket of the old page: 'J'+jpeg, 'P'+pcm and JSON text."""
     return await serve_ws(request, kd=False)
 
 
 async def ws_kd_handler(request):
-    """The same session over the KD wire: binary frames both ways."""
+    """kode-sim's page: the session over the KD wire, binary frames both ways."""
     return await serve_ws(request, kd=True)
 
 
@@ -851,15 +867,17 @@ def make_app():
     app.router.add_get("/api/status", status)
     app.router.add_get("/docs", docs_page)
     app.router.add_post("/api/notify", api_notify)
-    app.router.add_get("/ws", ws_handler)
-    app.router.add_get("/ws-kd", ws_kd_handler)
+    app.router.add_get("/ws", ws_kd_handler)
+    app.router.add_get("/ws-legacy", ws_legacy_handler)
     app.router.add_post("/api/build", api_build)
     app.router.add_get("/api/build/{id}", api_job)
     app.router.add_get("/api/sources", api_sources)
     app.router.add_get("/api/icon/{id}", api_icon)
     app.router.add_get("/api/source/{id}", api_source)
     app.router.add_post("/api/play", api_play)
-    app.router.add_static("/static/", STATIC)
+    for name in KSWEB_FILES:
+        app.router.add_get("/" + name, ksweb_file(name))
+    app.router.add_static("/dotsim/", STATIC)
     return app
 
 

@@ -8,6 +8,7 @@ WorkingDirectory=/opt/dot-sim/dotsim/server
 Environment=KODE_PORT=8000
 Environment=KODE_SIM=/opt/dot-sim/dotsim/hostsim
 Environment=KODE_STATIC=/opt/dot-sim/dotsim/web
+Environment=KODE_KSWEB=/opt/dot-sim/web
 Environment=KODE_LOCAL_APPS=/opt/dot-sim/dotsim/apps
 Environment=KODE_SDK=/opt/kode/src/kode-sdk
 Environment=KODE_BUILDS=/var/lib/dotsim/builds

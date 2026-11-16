@@ -112,4 +112,4 @@ async def test_frame_dropped_when_socket_busy():
 
 def test_both_sockets_routed():
     paths = {r.resource.canonical for r in server.make_app().router.routes() if r.method == "GET"}
-    assert {"/ws", "/ws-kd"} <= paths
+    assert {"/ws", "/ws-legacy"} <= paths

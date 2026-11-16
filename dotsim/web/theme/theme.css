@@ -1,0 +1,44 @@
+/* Dot Sim's look on kode-sim's page (see theme.js; the colours arrive as --ds-* from
+ * there, set by shell.js). kode-sim's own variables are pointed at ours, so its
+ * panel follows. */
+:root {
+  --bg: var(--ds-bg); --panel: var(--ds-card); --line: var(--ds-line); --text: var(--ds-text);
+  --muted: var(--ds-muted); --accent: var(--ds-blue);
+}
+html, body { background: var(--ds-bg); color: var(--ds-text);
+  font: 16px/1.5 var(--ds-font), "DM Sans", system-ui, sans-serif; }
+a { color: var(--ds-text); text-decoration-color: var(--ds-blue); text-underline-offset: 3px; }
+
+.card, #dotsim-aside, #dotsim-editor { background: var(--ds-card); border: 1px solid var(--ds-line); border-radius: 14px; }
+.card h2 { color: var(--ds-muted); }
+
+button, .upload, #banner button, .side button, .ds-btn {
+  background: var(--ds-blue); color: #fff; border: 0; border-radius: 10px; padding: 7px 16px;
+  font: inherit; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.12); text-decoration: none;
+  display: inline-flex; align-items: center; gap: 6px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.side button:hover, #banner button:hover { border: 0; filter: brightness(1.08); }
+.ds-ghost, #settings { background: var(--ds-line); color: var(--ds-text); box-shadow: none; }
+#settings { border: 0; border-radius: 10px; backdrop-filter: none; font-weight: 600; }
+.ds-yellow { background: var(--ds-yellow); color: var(--ds-text); }
+input[type=range] { accent-color: var(--ds-blue); }
+
+#log, #usblog { background: var(--ds-dark); color: var(--ds-on-dark); border-radius: 10px; padding: 10px; }
+#cmd { background: #fff; color: var(--ds-text); border-color: var(--ds-line); }
+kbd { background: #fff; color: var(--ds-text); border-color: var(--ds-line); }
+#state.running { color: #16A34A; }
+
+#dotsim-top .brand { font: 800 28px/1 var(--ds-font), system-ui, sans-serif; letter-spacing: -.5px; color: var(--ds-text); text-decoration: none; }
+#dotsim-top .pill { font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 99px; background: rgba(0,0,0,.08); color: #4A4742; }
+.ds-modes { display: inline-flex; background: rgba(0,0,0,.08); border-radius: 10px; padding: 3px; }
+.ds-modes button { background: transparent; color: #4A4742; box-shadow: none; padding: 5px 12px; font-weight: 500; }
+.ds-modes button.on { background: var(--ds-yellow); color: var(--ds-text); font-weight: 600; }
+#dotsim-status { border-left: 4px solid var(--ds-yellow); background: #fff; border-radius: 10px; padding: 10px 12px; }
+#dotsim-foot { color: var(--ds-muted); font-size: 13px; }
+
+#dotsim-editor .tabs button { background: transparent; color: #4A4742; box-shadow: none; border-radius: 10px 10px 0 0; font-weight: 500; }
+#dotsim-editor .tabs button.on { background: var(--ds-yellow); color: var(--ds-text); font-weight: 600; }
+#dotsim-editor .CodeMirror { border: 1px solid var(--ds-line); border-radius: 0 10px 10px 10px; background: #fff; }
+#dotsim-editor .CodeMirror-gutters { background: #F4F1EC; border-right: 1px solid var(--ds-line); }
+#dotsim-editor select, #dotsim-aside input[type=text] { background: #fff; color: var(--ds-text); border: 1px solid var(--ds-line);
+  border-radius: 10px; padding: 7px 10px; font: inherit; }

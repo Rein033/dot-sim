@@ -4,7 +4,7 @@
 
 sim.example.org {
 	@public {
-		path / /docs /api/status /api/icon/* /api/sources /api/source/* /api/play /api/build/* /ws /static/*
+		path / /docs /api/status /api/icon/* /api/sources /api/source/* /api/play /api/build/* /ws /dotsim/* /sim.js /audio-worklet.js /kode-dot.png /kode-dot.json
 	}
 	handle @public {
 		# Ask the auth server; a logged-in user gets Remote-User, a guest goes on without it.

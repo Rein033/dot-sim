@@ -1,0 +1,44 @@
+/* Where Dot Sim's parts sit on kode-sim's page (layout only; the look is theme/theme.css).
+ * kode-sim's page fills the window with the device; ours scrolls: a header, the
+ * device with our card next to it, the code editor, a footer. */
+html, body { height: auto; min-height: 100%; }
+main { height: auto; flex-wrap: wrap; align-items: flex-start; justify-content: center; padding: 0 20px 20px; gap: 24px; }
+#stage { flex: 0 1 560px; height: calc(100vh - 110px); min-height: 460px; min-width: 280px; }
+
+#dotsim-top { position: relative; z-index: 12; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 24px; }
+#dotsim-top .sp { flex: 1; }
+#dotsim-top #settings { position: static; }
+#dotsim-top canvas { width: 40px; height: 44px; }
+
+#dotsim-aside { flex: 0 1 340px; min-width: 0; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+#dotsim-aside .row { display: flex; flex-wrap: wrap; gap: 8px; }
+#dotsim-aside .row input { flex: 1; min-width: 0; }
+#dotsim-aside .keys { font-size: 13px; }
+#dotsim-editor { flex: 1 1 520px; min-width: 0; max-width: 900px; padding: 18px; }
+#dotsim-editor summary { font-size: 22px; font-weight: 600; cursor: pointer; }
+#dotsim-editor .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
+#dotsim-editor .bar select { flex: 1 1 200px; }
+#dotsim-editor .tabs { display: flex; gap: 4px; }
+#dotsim-editor .tabs .hint { margin-left: auto; font-size: 13px; align-self: center; color: var(--muted); }
+#dotsim-editor .CodeMirror { height: 58vh; min-height: 320px; font: 13.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+#dotsim-editor .cm-err-line { background: rgba(220, 38, 38, .14); }
+#dotsim-editor .cm-warn-line { background: rgba(217, 119, 6, .12); }
+#ds-problems { list-style: none; margin: 8px 0 0; padding: 0; max-height: 140px; overflow: auto; font: 13px/1.5 ui-monospace, monospace; }
+#ds-problems li { padding: 4px 10px; border-radius: 8px; cursor: pointer; color: #DC2626; }
+#ds-problems li.warn { color: #D97706; }
+#dotsim-foot { padding: 4px 24px 24px; text-align: center; }
+
+/* What kode-sim's page has and the fast engine does not do (yet): the Mac's microphone,
+ * installing a .bin, the microSD and the computer on the USB cable. */
+.ds-unsupported { display: none !important; }
+/* Beginner: the apps, the code and the battery; Advanced: also motion and the console. */
+html.ds-beginner #motioncard, html.ds-beginner .side .console { display: none; }
+
+@media (max-width: 900px) {
+  /* kode-sim's page turns main into a column here: our parts take its width */
+  main { align-items: stretch; padding: 0 12px 16px; }
+  #stage { flex: 0 0 auto; height: 72vh; }
+  #dotsim-aside, #dotsim-editor { flex: 0 0 auto; max-width: none; }
+  #dotsim-editor .tabs .hint { display: none; }
+  #dotsim-top { padding: 10px 14px; }
+}
