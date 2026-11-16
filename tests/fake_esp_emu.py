@@ -43,6 +43,10 @@ from the mailbox") and boots it.
 Each launch appends a line to $FAKE_LAUNCH_LOG. It exits once UART1's
 client has gone, unless $FAKE_OUTLIVE_UART (then it runs on, as esp-emu
 does, until it is stopped).
+For kode-sim bench: --version answers "esp-emu 0.0.0-fake"; with
+$FAKE_CLOCK its emulated time runs at that many times the wall's, and the
+chips hear it in a heartbeat every 10 ms; with $FAKE_FPS it paints the 2x2
+square that many times a second.
 """
 
 import asyncio
@@ -56,6 +60,9 @@ import kd
 
 async def main() -> int:
     args = sys.argv[1:]
+    if "--version" in args:
+        print("esp-emu 0.0.0-fake", flush=True)
+        return 0
     host, port = args[args.index("--uart1-tcp") + 1].rsplit(":", 1)
     if os.environ.get("FAKE_LAUNCH_LOG"):
         with open(os.environ["FAKE_LAUNCH_LOG"], "a") as f:
@@ -130,6 +137,14 @@ async def main() -> int:
 
     await boot()
 
+    if os.environ.get("FAKE_FPS"):
+        async def paint():
+            while not writer.is_closing():
+                writer.write(kd.encode(kd.FB_RECT, struct.pack("<HHHH", 0, 0, 2, 2) + b"\xff\xff" * 4))
+                await writer.drain()
+                await asyncio.sleep(1 / float(os.environ["FAKE_FPS"]))
+        asyncio.get_running_loop().create_task(paint())
+
     if "--control-tcp" in args:
         chost, cport = args[args.index("--control-tcp") + 1].rsplit(":", 1)
 
@@ -174,8 +189,10 @@ async def main() -> int:
     t0 = loop.time()
     i2s = {"rx": None, "frames": 0, "peak": 0}
 
+    clock_rate = float(os.environ.get("FAKE_CLOCK", "1"))
+
     def sim_ns():
-        return int((loop.time() - t0) * 1e9)
+        return int((loop.time() - t0) * 1e9 * clock_rate)
 
     def vint(n):
         out = b""
@@ -272,6 +289,13 @@ async def main() -> int:
                 ack = vf(1, 1) + ld(2, b"esp32p4") + vf(3, 55) + vf(5, 1)
                 to_chips(ld(5, ack))
                 await cwriter.drain()
+                if os.environ.get("FAKE_CLOCK"):
+                    async def clock(w=cwriter):
+                        while chips["writer"] is w:
+                            to_chips(vf(1, sim_ns()) + ld(2, b""))
+                            await w.drain()
+                            await asyncio.sleep(0.01)
+                    loop.create_task(clock())
             elif 6 in m:                                  # GpioDrive
                 g = fields(m[6])
                 pin, level = g.get(1, 0), g.get(2, 0)

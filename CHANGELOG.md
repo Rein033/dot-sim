@@ -6,6 +6,16 @@ change how kode-sim is used, and says so here.
 
 ## [Unreleased]
 
+### Added
+
+- **`kode-sim bench`: how fast esp-emu runs a firmware on this computer.**
+  It boots a project (or `--firmware`) headless, lets it run for
+  `--seconds` (20) once kemu has said HELLO, and says the emulated time
+  over the wall time (esp-emu's own clock, from its co-simulation bus), the
+  screen updates kemu sent per second, esp-emu's CPU time and the boot
+  time, with the computer's processor and the esp-emu version; `--json`
+  for a script.
+
 ### Fixed
 
 - **The USB host takes nothing from a Kode Dot that restarted until its new

@@ -89,6 +89,7 @@ kode-sim run --no-wifi <project>       # a Kode Dot whose C5 never comes up
 kode-sim run --no-internet <project>   # a network with no way out but DNS
 kode-sim run --sd my-card.img <project> # another microSD (made if it does not exist)
 kode-sim run --no-sd <project>         # the slot empty at start
+kode-sim bench <project>               # how fast esp-emu runs it on this computer
 ```
 
 Without `--exit-on-crash` a crash is printed and the page offers a restart.
@@ -286,6 +287,54 @@ backreferences (`(\w+) \1`, `(?P<w>\w+)-(?P=w)`), and a `{` that starts no
 Where it is not Python's: inside a class, `[[`, `&&` and `~~` are Rust's
 nested classes and set operations (write `\[`, `\&`, `\~`); `\Z` is also
 before a final newline; `{2,1}` is accepted and finds nothing.
+
+## Measuring speed: kode-sim bench
+
+esp-emu runs the P4 on one core of your computer, so how close to real time
+a Kode Dot runs depends on the computer and on what the firmware does.
+`kode-sim bench` measures it:
+
+```
+kode-sim bench <project>                      # build, boot headless, measure 20 s
+kode-sim bench --seconds 60 --sdk <kode-sdk> <example>
+kode-sim bench --firmware merged-binary.bin --elf app.elf   # an image already built
+kode-sim bench --json <project>               # the same numbers as one JSON object
+```
+
+It boots the firmware with no page, window or serial port and the card slot
+empty, waits for kemu's HELLO, and lets it run for `--seconds` of wall time
+(20 by default). Then it prints:
+
+```
+kode-sim bench: display_lvgl on esp-emu 1.0.0
+  host     Intel(R) Core(TM) i5-14500T, 6 cores
+  speed    1.02× real time (20.39 s emulated in 20.00 s)
+  screen   1.0 frames/s (21 from kemu)
+  esp-emu  10.3 s of CPU in 22.6 s (0.46 of a core)
+  boot     2.6 s until kemu's HELLO (0.59 s emulated)
+```
+
+- **speed** is the emulated time over the wall time: esp-emu's own clock,
+  which the board's chips hear on its co-simulation bus, so it does not
+  depend on what the app prints. A chip reset during the run is counted
+  through. esp-emu keeps an idle chip near the wall clock: an app that is
+  mostly idle (display_lvgl above redraws once a second) shows about 1×
+  whatever the computer, and **esp-emu**'s share of a core says how much
+  room was left. Only an app that keeps the chip busy shows where the
+  computer's limit is: below 1×, with esp-emu near a whole core.
+- **screen** is the screen updates kemu sent (each a band of rows that
+  changed), per second of wall time: what the page would have drawn.
+- **esp-emu** is its CPU time, user and system, over its whole run, boot
+  and stop included.
+- **boot** is from esp-emu's start to kemu's HELLO.
+
+esp-emu 1.0 counts cycles but says how many only when the CPU faults, so
+there are no cycles per second. Other work on the computer slows it down:
+for numbers to compare, measure on a quiet machine. With `--json`, the keys
+are `firmware`, `host_cpu`, `host_cores`, `esp_emu`, `ratio`, `emulated_s`,
+`wall_s`, `frames`, `fps`, `cpu_s`, `cpu_wall_s`, `boot_s` and
+`boot_emulated_s`. The exit code is 0 when it measured, 1 when it could not
+(the build failed, the firmware crashed or never said HELLO, a signal).
 
 ## Motion: the IMU and the magnetometer
 
