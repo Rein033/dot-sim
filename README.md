@@ -59,7 +59,7 @@ kode-sim 0.2.0 runs on esp-emu 1.0.0. What the emulator does not have yet, `kemu
 | Bluetooth, Wi-Fi scans, infrared | ❌ | the ESP32-C5 in esp-emu |
 | NFC, 125 kHz RFID | ❌ absent, as on a board without them | |
 | JPEG and PPA, light sleep | ❌ done in software, or not at all | esp-emu ([esp-emulator#5](https://github.com/espressif/esp-emulator/issues/5)) |
-| Speed | 🟡 half to full real time on an Apple M-series Mac, slower on smaller computers: the emulator runs on one core | [esp-emulator#53](https://github.com/espressif/esp-emulator/issues/53) |
+| Speed | 🟡 half to full real time on an Apple M-series Mac, slower on smaller computers: the emulator runs on one core; [`kode-sim bench`](docs/GUIDE.md#measuring-speed-kode-sim-bench) measures yours | [esp-emulator#53](https://github.com/espressif/esp-emulator/issues/53) |
 
 ✅ works · 🟡 works, through a stand-in or with limits · ❌ not yet
 

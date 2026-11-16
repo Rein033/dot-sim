@@ -11,6 +11,13 @@ change how kode-sim is used, and says so here.
 - **The page is in English and Spanish.** It follows the browser's language,
   and an ES | EN switch at the bottom of the side panel changes it without a
   reload; the choice is kept in the browser.
+- **`kode-sim bench`: how fast esp-emu runs a firmware on this computer.**
+  It boots a project (or `--firmware`) headless, lets it run for
+  `--seconds` (20) once kemu has said HELLO, and says the emulated time
+  over the wall time (esp-emu's own clock, from its co-simulation bus), the
+  screen updates kemu sent per second, esp-emu's CPU time and the boot
+  time, with the computer's processor and the esp-emu version; `--json`
+  for a script.
 
 ### Fixed
 

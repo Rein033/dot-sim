@@ -42,5 +42,6 @@ Alongside these, whenever they are ready:
   simulator, for apps.kode.diy, will be designed again when it is needed.
 - **Speed.** esp-emu runs on one core: about real time on an Apple
   M-series Mac, a third of it on a small x86 server - [esp-emulator#53](https://github.com/espressif/esp-emulator/issues/53).
+  `kode-sim bench` measures it on a given computer, for a given firmware.
 - **`--cosim-wait N`** (to propose to Espressif): hold the chip in reset
   until N devices have registered, which saves the double boot at start.

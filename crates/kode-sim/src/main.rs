@@ -5,9 +5,11 @@
 //! and boots it in esp-emu with the board's chips in-process and serves the
 //! page; `install` puts an app in a running kodeOS through its console, or
 //! `--mailbox` into app_pending as an Arduino upload does; `review` puts an
-//! app through a scenario, headless.
+//! app through a scenario, headless; `bench` measures how fast esp-emu runs
+//! it here.
 
 mod audio;
+mod bench;
 mod bridge;
 mod build;
 mod chips;
@@ -140,6 +142,30 @@ enum Cmd {
         #[arg(long)]
         save_state: bool,
     },
+    /// Build a project, boot it headless and measure how fast esp-emu runs
+    /// it here: emulated time over wall time.
+    ///
+    /// Or measure a firmware already built, with --firmware (and --elf).
+    Bench {
+        /// An ESP-IDF project: a kode-sdk app or kodeOS
+        #[arg(required_unless_present = "firmware", conflicts_with = "firmware")]
+        project: Option<PathBuf>,
+        /// Build against this kode-sdk checkout instead of the pinned one
+        #[arg(long, value_name = "DIR", conflicts_with = "firmware")]
+        sdk: Option<PathBuf>,
+        /// A bootable image already built: bootloader, partition table and app
+        #[arg(long, value_name = "MERGED.bin")]
+        firmware: Option<PathBuf>,
+        /// The app's ELF, for esp-emu's symbols
+        #[arg(long, value_name = "APP.elf", requires = "firmware")]
+        elf: Option<PathBuf>,
+        /// How long to measure for, in seconds of wall time, once it has booted
+        #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u64).range(1..=3600))]
+        seconds: u64,
+        /// Print the summary as one JSON object, for a script
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -160,6 +186,22 @@ fn main() -> ExitCode {
                 code
             });
             std::process::exit(code);
+        }
+        Cmd::Bench { project, sdk, firmware, elf, seconds, json } => {
+            let (firmware, elf, what) = match (project, firmware) {
+                (Some(project), _) => match build::built(&project, sdk.as_deref(), false) {
+                    Ok(fw) => (fw.merged_bin, Some(fw.elf), name_of(&project)),
+                    Err(code) => return ExitCode::from(code as u8),
+                },
+                (None, Some(firmware)) => {
+                    let what = name_of(&firmware);
+                    (firmware, elf, what)
+                }
+                (None, None) => unreachable!("clap requires one"),
+            };
+            let rt = tokio::runtime::Runtime::new().expect("a tokio runtime");
+            let code = rt.block_on(bench::command(bench::Args { firmware, elf, what, seconds, json }));
+            ExitCode::from(code as u8)
         }
         Cmd::Run {
             project,
@@ -216,4 +258,10 @@ fn main() -> ExitCode {
             std::process::exit(code);
         }
     }
+}
+
+/// A path's last part, as a summary names what it ran.
+fn name_of(p: &std::path::Path) -> String {
+    let p = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    p.file_name().map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into_owned())
 }
