@@ -142,6 +142,27 @@ BUTTONS, BATTERY, MOTION, CONSOLE, …) to the page.
   wording. Today: Dot Sim + Dash in docs.kode.diy's style. After permission: a Kode theme with
   Kody's official animations (Lottie, CC BY-SA credit) and Kode's name.
 
+## Board parts in the fast engine (added 2026-11-16, approved by Rein)
+
+Rein asked to focus on kode-sim's status list, in our own fast engine (option 1 of three: our
+sim / upstream kode-sim / both). Each part becomes a simulated device, controlled from Settings
+(Advanced), inside the sandbox, never with real network:
+
+1. **microSD**: a card per session as a folder; insert/remove from Settings (kode-sim's
+   "SD" switch); put files on it and take them off.
+2. **USB**: the cable (VBUS, done in Task 2) plus a simulated computer: what the Dot types as a
+   USB keyboard shows in Settings; a Dot acting as a USB disk shows its files.
+3. **NFC / RFID / IR**: pick a virtual NFC tag (NTAG with a URL or text, a MIFARE UID) and hold
+   it to the Dot; an EM4100 card with an ID of your choice; IR codes the Dot sends (NEC) are
+   shown, and you can fire a remote's code at it.
+4. **WiFi / BLE (fake)**: a simulated network "DotSim" that always connects; scans return a
+   fixed list of fake networks and fake BLE devices; real internet requests get a clean
+   "offline in Dot Sim" answer; nothing leaves the sandbox.
+5. **Speed meter**: fps, frame time, the sim's CPU and heap in Advanced, so you can judge
+   whether the app would run smoothly on a Dot.
+
+These come before the queue and the lessons.
+
 ## Decided by Rein
 
 - Public, no accounts; protected by a queue and spreading over workers.

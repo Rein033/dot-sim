@@ -84,6 +84,72 @@
 - [ ] **Step 4: Run** → PASS.
 - [ ] **Step 5: Commit and push** `dotsim: kode-sim's page as the front, with modes, home and theme`. Check https://kode.uselesssite.nl shows it after the deploy timer.
 
+
+## Milestone 1b: the board's parts in the fast engine (live after each task)
+
+Common rules for Tasks H1-H5: model each part at the lowest SDK layer the sim already
+replaces (dotsim/hostsim/components: khal_*_sim.c, kdrv/src/*_sim.c — read the real driver in
+kode-sdk, linked in the container at dotsim/hostsim/sdk, to see what the layers above call).
+Page ↔ server: JSON text messages on the KD WebSocket, `{"part": {...}}`; server ↔ sim: one new
+text line prefix per part (listed per task; must not reuse `b t n m q p i c ?`). Settings UI
+in dotsim/web (a card per part, shown in Advanced; reuse kode-sim's own card where it exists).
+Each task: tests in dotsim/tests (C-level through the sim socket like test_hostsim_inputs.py,
+plus a Playwright check of its card), then merge to main and push (live).
+
+### Task H1: microSD
+
+- Sim line `s <0|1>` (card out/in); the card is the folder `<KODE_SIM_DATA>/sd`.
+- Implement `khal_sdmmc_*` for the sim (`dotsim/hostsim/components/khal/src/khal_sdmmc_sim.c`):
+  mounted/hosted/info (1 GB card, used/free from the folder), mount point the folder.
+- Page: kode-sim's "SD" checkbox drives it; Advanced card lists the card's files, uploads
+  (≤ 700 KB each, ≤ 16 MB total per session) and downloads them. Server JSON:
+  `{"sd": {"in": bool}}`, `{"sd_ls": {}}` → `{"sd_files": [{"name","size"}]}`,
+  `{"sd_put": {"name","b64"}}`, `{"sd_get": {"name"}}` → `{"sd_file": {"name","b64"}}`.
+  Names: no `/`, no `..`, ≤ 64 chars.
+- Tests: `test_sd_insert_remove` (`? sd` → `sd <0|1> <files>` through kdrv_sd), `test_sd_file_seen_by_app`
+  (put a file, `? sd` counts it), `test_sd_name_traversal_refused`.
+
+### Task H2: USB computer
+
+- The Dot as a USB device seen by a simulated computer: HID keyboard reports the app sends
+  become text in Settings ("typed"); a mass-storage disk the app exposes is listed.
+  Model at the layer the SDK's USB code calls (find it: khal/TinyUSB); sim line `u <0|1>`
+  for the data connection (cable already in Task 2's `p`).
+- Server JSON: `{"usb_typed": "text"}` (sim → page, as `L`-like record or a new record type),
+  `{"usb_files": [...]}`.
+- Tests: an app that types "hi" as a keyboard → page receives "hi"; disk listing appears.
+  If no SDK app uses USB device classes yet, build a tiny test app in dotsim/tests/apps/.
+
+### Task H3: NFC, RFID, IR
+
+- RFID: sim line `r <hex10>` (an EM4100 card held) / `r -` (taken away); `kdrv_rfid_lf_read_window`
+  returns it.
+- NFC: sim line `f <type> <uid-hex> [ndef-b64]` (`ntag`, `mifare`) / `f -`; modelled at
+  the ST25R3916 driver or knfc_tag level, whichever is lower and still small.
+- IR: what the Dot transmits (kdrv_ir / knec) becomes `{"ir_tx": {"proto":"nec","addr","cmd"}}`;
+  sim line `x nec <addr> <cmd>` fires a code at the Dot.
+- Page: an Advanced card with presets (a URL tag, a text tag, a MIFARE UID, an EM4100 ID, an IR remote).
+- Tests: one per part through the sim socket (`? rfid`, `? nfc`, IR tx record), plus the card.
+
+### Task H4: fake WiFi and BLE
+
+- WiFi: start → connected to SSID "DotSim" (IP 10.0.0.2); scan → fixed list
+  (DotSim, Cafe-Free, Home-5G, Office); HTTP/stream/MQTT/UDP calls end with the SDK's own
+  "no network" status and a log line "offline in Dot Sim"; nothing opens a socket.
+- BLE: scan → fixed fake devices (Dot Watch, Heart Rate, Speaker); connects succeed to a
+  fake peer that echoes writes.
+- Model in `kdrv_radio_sim.c` / a new `kdrv_net_sim.c` at the kdrv_net / kdrv_ble API.
+- Tests: wifi status and scan list through `? wifi`; HTTP GET ends offline; BLE scan list
+  through `? ble`; a test that the sim process has no AF_INET socket open.
+
+### Task H5: speed meter
+
+- Sim answers `? perf` with `perf <cpu-permille> <heap-free> <heap-min>` (CPU of the sim
+  process over the last second, FreeRTOS heap figures).
+- Advanced: a strip with fps, frame time, CPU and heap, updated each second, with a hint
+  when fps < 25 ("may stutter on a Dot").
+- Tests: `? perf` answers within range; the strip appears in Advanced and updates.
+
 ## Milestone 2: queue and workers (live)
 
 ### Task 4: Front and worker roles
