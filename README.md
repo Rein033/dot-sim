@@ -36,7 +36,7 @@ kode-sim run kode-app-template
   <img src=".github/img/settings.jpg" alt="Ajustes open: power, battery, microSD, motion, USB and the console" width="300">
 </p>
 
-The window shows only the Kode Dot. Click the screen to touch it, click the buttons or use the keys: <kbd>T</kbd> for the top button, <kbd>B</kbd> for the bottom one, the arrows for the D-pad. **Ajustes** opens the rest: the battery, the USB cable, the microSD, motion, a computer on the USB port, installing an app and the console.
+The window shows only the Kode Dot. Click the screen to touch it, click the buttons or use the keys: <kbd>T</kbd> for the top button, <kbd>B</kbd> for the bottom one, the arrows for the D-pad. **Ajustes** (Settings) opens the rest: the battery, the USB cable, the microSD, motion, a computer on the USB port, installing an app and the console. The page is in English and Spanish: it follows the browser's language, and the **ES | EN** switch at the bottom of that panel changes it (remembered).
 
 ## One simulator for everyone
 

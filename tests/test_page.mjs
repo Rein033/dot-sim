@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const SRC = readFileSync(new URL("../web/sim.js", import.meta.url), "utf8");
+const read = (f) => readFileSync(new URL(`../web/${f}`, import.meta.url), "utf8");
+const SRC = read("i18n.js") + "\n" + read("sim.js"), HTML = read("index.html");
 const T = { BUTTONS: 0x81, PCM_IN: 0x82 };
 
 function element(id) {
@@ -14,12 +15,15 @@ function element(id) {
   return {
     id, listeners, children, style: { setProperty() {} }, dataset: {},
     classList: { add() {}, remove() {}, toggle() {} },
-    textContent: "", value: "", checked: false, disabled: false, innerHTML: "", className: "",
+    textContent: "", value: "", checked: false, disabled: false, className: "",
+    get innerHTML() { return this.html || ""; },
+    set innerHTML(v) { this.html = v; if (v === "") children.length = 0; },
     scrollTop: 0, clientHeight: 100,
     get scrollHeight() { scrollHeightReads++; return 100 + children.length; },
     get scrollHeightReads() { return scrollHeightReads; },
     addEventListener(ev, f) { (listeners[ev] ||= []).push(f); },
     setPointerCapture() {},
+    setAttribute(k, v) { this[k] = String(v); },
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 410, height: 502 }),
     getContext: () => ({ createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }), putImageData() {} }),
     append(...c) { children.push(...c); },
@@ -28,6 +32,22 @@ function element(id) {
     get childElementCount() { return children.length; },
     get firstChild() { return children.length ? { remove: () => children.shift() } : null; },
   };
+}
+
+// What index.html names for translation: one element for each tag with a data-i18n*
+// attribute, with the text that follows it (the Spanish the HTML starts with).
+function translatable() {
+  const out = [];
+  for (const m of HTML.matchAll(/<\w+((?:\s[^>]*)?\sdata-i18n[^>]*)>([^<]*)/g)) {
+    const el = element(/\sid="([^"]+)"/.exec(m[1])?.[1] ?? "static");
+    for (const [, k, v] of m[1].matchAll(/\sdata-i18n([\w-]*)="([^"]*)"/g)) {
+      const parts = k.split("-").filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1));
+      el.dataset["i18n" + parts.join("")] = v;
+    }
+    el.textContent = m[2].replace(/\s+/g, " ").trim();
+    out.push(el);
+  }
+  return out;
 }
 
 // A page loaded on mocks; `tick(ms)` moves its clock and runs what is due.
@@ -50,6 +70,8 @@ function page(opts = {}) {
     toggle: (c, on) => { const v = on === undefined ? !roots.has(c) : on; v ? roots.add(c) : roots.delete(c); return v; },
   };
   const store = new Map(Object.entries(opts.stored || {}));   // localStorage
+  const marked = translatable();      // the HTML's data-i18n elements; those with an id are the page's own
+  for (const el of marked) if (el.id !== "static") els[el.id] = el;
 
   class WebSocket {
     static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
@@ -84,8 +106,8 @@ function page(opts = {}) {
       getElementById: (id) => (els[id] ||= element(id)),
       createElement: () => element("created"),
       querySelector: (sel) => (els[sel] ||= element(sel)),
-      querySelectorAll: () => [],
-      documentElement: { classList: rootClasses },
+      querySelectorAll: (sel) => (/data-i18n/.test(sel) ? marked : []),
+      documentElement: { classList: rootClasses, lang: "" },
     },
     window: {
       addEventListener(ev, f) { (winListeners[ev] ||= []).push(f); },
@@ -96,7 +118,7 @@ function page(opts = {}) {
     setTimeout: (f, ms = 0) => { const id = ++seq; timers.set(id, { at: now + Math.max(0, ms), f }); return id; },
     clearTimeout: (id) => timers.delete(id),
     requestAnimationFrame: (f) => { frames.push(f); return frames.length; },
-    navigator: { mediaDevices: { getUserMedia: () => new Promise((resolve, reject) => media.push({ resolve, reject })) } },
+    navigator: { languages: opts.languages ?? ["en-US"], language: (opts.languages ?? ["en-US"])[0], mediaDevices: { getUserMedia: () => new Promise((resolve, reject) => media.push({ resolve, reject })) } },
     WebSocket, AudioContext, AudioWorkletNode,
     localStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) },
     ResizeObserver: class { observe() {} },
@@ -105,7 +127,7 @@ function page(opts = {}) {
   vm.runInContext(SRC, sandbox);
 
   const p = {
-    sb: sandbox, els, sockets, media, micNodes, stream, nodes, modules, posted, roots, store,
+    sb: sandbox, els, marked, run: (code) => vm.runInContext(code, sandbox), sockets, media, micNodes, stream, nodes, modules, posted, roots, store,
     fire(ev) { for (const f of winListeners[ev] || []) f({}); },
     slowModules() { slowModule = true; },
     get now() { return now; },
@@ -422,14 +444,14 @@ test("the cable's snapshot fills the computer's panel, and its buttons send comm
   assert.equal(p.els.usbkbd.hidden, false);
   assert.equal(p.els.usbdisk.hidden, true);
   assert.equal(p.els.usbtyped.textContent, "Hola");
-  assert.equal(p.els.usbplug.textContent, "Sacar cable");
+  assert.equal(p.els.usbplug.textContent, "Unplug cable");
   say({ ...base, stage: "mounted", device: { vid: "306a", pid: "1234", manufacturer: "", product: "Disk", class: "mass storage" },
         disk: { label: "KODE", free: 2 << 20, total: 4 << 20, write_protected: false, files: [{ name: "a.txt", size: 19, dir: false }] } });
   assert.equal(p.els.usbdisk.hidden, false);
   assert.equal(p.els.usbkbd.hidden, true);
   assert.equal(p.els.usbeject.hidden, false);
   assert.equal(p.els.usbfiles.children.length, 1);
-  assert.match(p.els.usbvol.textContent, /KODE · 2\.0 MB libres de 4\.0 MB/);
+  assert.match(p.els.usbvol.textContent, /KODE · 2\.0 MB free of 4\.0 MB/);
   p.els.usbfiles.children[0].onclick();
   p.els.usbeject.onclick();
   const sent = ws.sent.filter((d) => typeof d === "string").map((d) => JSON.parse(d).usb).filter(Boolean);
@@ -464,3 +486,167 @@ test("turning the microphone off is remembered", () => {
   p.els.micin.checked = true; p.els.micin.onchange();
   assert.equal(p.store.get("kode-sim.mic"), "on");
 });
+
+// ---- the language: English or Spanish ----------------------------------------------
+
+const lang = (p) => p.sb.document.documentElement.lang;
+
+test("the page comes up in English where the browser's language is English", () => {
+  const p = page({ languages: ["en-US", "es-ES"] });
+  assert.equal(lang(p), "en");
+  assert.equal(p.els.state.textContent, "connecting…");
+  assert.equal(p.els.settings.title, "Battery, USB, SD card, motion, installing an app and the console");
+  assert.equal(p.els.more.textContent, "More");
+  assert.equal(p.els["lang-en"]["aria-pressed"], "true");
+});
+
+test("the page comes up in Spanish where the browser's language is Spanish", () => {
+  const p = page({ languages: ["es-ES", "en"] });
+  assert.equal(lang(p), "es");
+  assert.equal(p.els.state.textContent, "conectando…");
+  assert.equal(p.els.more.textContent, "Más");
+  assert.equal(p.els["lang-es"]["aria-pressed"], "true");
+});
+
+test("a browser with only navigator.language is read the same", () => {
+  const p = page({ languages: [] });
+  p.sb.navigator.languages = undefined; p.sb.navigator.language = "es-MX";
+  assert.equal(p.run("langWanted()"), "es");
+});
+
+test("the switch relabels the page at once, sends nothing and opens no socket", () => {
+  const p = page(); const ws = p.open(); ws.onopen();
+  const sent = ws.sent.length;
+  p.els["lang-es"].onclick();
+  assert.equal(lang(p), "es");
+  assert.equal(p.els.more.textContent, "Más");
+  assert.equal(p.els.settings.title, "Batería, USB, tarjeta SD, movimiento, instalar una app y la consola");
+  assert.equal(p.els["lang-es"]["aria-pressed"], "true");
+  assert.equal(p.els["lang-en"]["aria-pressed"], "false");
+  p.els["lang-en"].onclick();
+  assert.equal(p.els.more.textContent, "More");
+  assert.equal(ws.sent.length, sent);
+  assert.equal(p.sockets.length, 1);
+});
+
+test("the choice is remembered, and wins over the browser's language", () => {
+  const p = page();
+  p.els["lang-es"].onclick();
+  assert.equal(p.store.get("kode-sim.lang"), "es");
+  const q = page({ stored: { "kode-sim.lang": "es" } });
+  assert.equal(lang(q), "es");
+  assert.equal(q.els.state.textContent, "conectando…");
+  const r = page({ languages: ["es-ES"], stored: { "kode-sim.lang": "en" } });
+  assert.equal(lang(r), "en");
+  const junk = page({ languages: ["es-ES"], stored: { "kode-sim.lang": "fr" } });
+  assert.equal(lang(junk), "es");
+});
+
+test("a storage that throws leaves the switch working, unremembered", () => {
+  const p = page();
+  p.sb.localStorage = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } };
+  p.els["lang-es"].onclick();
+  assert.equal(lang(p), "es");
+  assert.equal(p.run("langWanted()"), "en");
+});
+
+test("the state, the power button and the banner follow the language", () => {
+  const p = page(); const ws = p.open();
+  p.sb.setState("off");
+  assert.equal(p.els.state.textContent, "off");
+  assert.equal(p.els.banner.children[0].textContent, "Off. Press the bottom button to turn it on.");
+  assert.equal(p.els.banner.children[1].textContent, "Power on");
+  p.els["lang-es"].onclick();
+  assert.equal(p.els.state.textContent, "apagado");
+  assert.equal(p.els.banner.children.length, 2, "the banner was drawn twice");
+  assert.equal(p.els.banner.children[0].textContent, "Apagado. Pulsa el botón inferior para encenderlo.");
+  assert.equal(p.els.banner.children[1].textContent, "Encender");
+  p.sb.setState("running");
+  assert.equal(p.els.state.textContent, "encendido");
+  assert.equal(p.els.power.textContent, "Encendido");
+  p.els["lang-en"].onclick();
+  assert.equal(p.els.state.textContent, "on");
+  assert.equal(p.els.power.textContent, "On");
+  assert.equal(p.els.state.className, "running");
+  p.sb.setState("crashed", "panic at 0x40");
+  p.els["lang-es"].onclick();
+  assert.equal(p.els.banner.children[0].textContent, "El firmware se ha colgado.");
+  assert.equal(p.els.banner.children[1].textContent, "panic at 0x40", "the firmware's own text is not touched");
+});
+
+test("a connection that was lost says so in the language of the moment", () => {
+  const p = page(); const ws = p.open();
+  ws.onclose();
+  assert.equal(p.els.banner.children[0].textContent, "No connection to kode-sim; retrying…");
+  p.els["lang-es"].onclick();
+  assert.equal(p.els.banner.children[0].textContent, "Sin conexión con kode-sim; reintentando…");
+  assert.equal(p.els.banner.children.length, 1, "no button for a lost connection");
+});
+
+test("the sound hint, the motion read-outs and the computer's panel follow the language", () => {
+  const p = page(); const ws = p.open();
+  assert.equal(p.els.sound.textContent, "Click the device to turn the sound on");
+  p.els.mhead.value = 225; p.els.mhead.oninput();
+  p.els.mmag.value = 160; p.els.mmag.oninput();
+  assert.equal(p.els.mheadv.textContent, "225° SW");
+  assert.equal(p.els.mmagv.textContent, "no magnet");
+  const sent = ws.sent.length;
+  ws.onmessage({ data: JSON.stringify({ usb: { cable: true, stage: "enumerating", error: "", log: [], layout: "es", typed: "" } }) });
+  assert.equal(p.els.usbst.textContent, "enumerating…");
+  p.els["lang-es"].onclick();
+  assert.equal(p.els.sound.textContent, "Haz clic en el dispositivo para activar el sonido");
+  assert.equal(p.els.mheadv.textContent, "225° SO");
+  assert.equal(p.els.mmagv.textContent, "sin imán");
+  assert.equal(p.els.usbst.textContent, "enumerando…");
+  assert.equal(p.els.usbplug.textContent, "Sacar cable");
+  assert.equal(p.els.usbst.className, "st enumerating");
+  assert.equal(ws.sent.length, sent, "relabelling sent a motion frame");
+});
+
+test("the sound, once on, stays on in the other language", async () => {
+  const p = page(); p.open();
+  await p.sb.audioUnlock();
+  assert.equal(p.els.sound.textContent, "Sound on");
+  p.els["lang-es"].onclick();
+  assert.equal(p.els.sound.textContent, "Sonido activo");
+});
+
+test("More and Less follow the language too", () => {
+  const p = page();
+  p.els.more.onclick();
+  assert.equal(p.els.more.textContent, "Less");
+  p.els["lang-es"].onclick();
+  assert.equal(p.els.more.textContent, "Menos");
+});
+
+test("the console's own lines come in the language they were written in", async () => {
+  const p = page(); const ws = p.open();
+  p.els.app.files = [{ name: "a.bin", size: 2048 }];
+  p.sb.fetch = async () => ({ json: async () => ({ ok: true }) });
+  await p.els.app.onchange();
+  p.frame();
+  assert.deepEqual(p.els.log.children.map((c) => c.textContent),
+                   ["[kode-sim] uploading a.bin (2 KB)…", "[kode-sim] a.bin installed; KodeOS boots it"]);
+});
+
+test("every string is in both languages, and every key the page names exists", () => {
+  const { es, en } = JSON.parse(p0().run("JSON.stringify(STRINGS, (k, v) => typeof v === 'function' ? v.length : v)"));
+  assert.deepEqual(Object.keys(en).sort(), Object.keys(es).sort());
+  for (const k of Object.keys(es)) {
+    assert.equal(typeof en[k], typeof es[k], k);
+    if (typeof es[k] === "number") assert.equal(en[k], es[k], `${k} takes different arguments`);
+  }
+  const used = new Set(p0().marked.flatMap((el) => Object.values(el.dataset)));
+  const keyed = [...used].filter((k) => !(k in es));
+  assert.deepEqual(keyed, []);
+  const sim = read("sim.js");
+  for (const m of sim.matchAll(/\bt\(\s*"([^"]+)"/g)) assert.ok(m[1] in es, `t("${m[1]}")`);
+  for (const m of sim.matchAll(/\bt\(`([a-z]+\.[a-z.]*)\$\{/g)) assert.ok(Object.keys(es).some((k) => k.startsWith(m[1])), m[1]);
+});
+
+test("the HTML starts in Spanish, as the table has it", () => {
+  const es = JSON.parse(p0().run("JSON.stringify(STRINGS.es)"));
+  for (const el of p0().marked) if (el.dataset.i18n) assert.equal(el.textContent, es[el.dataset.i18n], el.dataset.i18n);
+});
+
+function p0() { return page({ languages: ["es-ES"] }); }

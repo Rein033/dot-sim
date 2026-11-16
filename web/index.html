@@ -67,6 +67,9 @@
   #state.running { color: #6fd08c; } #state.off { color: var(--muted); } #state.crashed { color: var(--bad); }
   #state.busy { color: var(--warn); }
   #sound { color: var(--warn); }
+  .lang { display: flex; gap: 4px; justify-content: flex-end; }
+  .lang button { padding: 2px 10px; font-size: 12px; }
+  .lang button[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
   input[type=range] { flex: 1; accent-color: var(--accent); }
   .console { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
   #log { flex: 1 1 auto; overflow: auto; font: 11.5px/1.4 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
@@ -106,7 +109,7 @@
     overflow: auto; padding: 56px 14px 14px; background: var(--bg); border-left: 1px solid var(--line);
     box-shadow: -12px 0 32px #0008; transform: translateX(105%); transition: transform 180ms ease; }
   html.panel:not(.embed) .side { transform: none; }
-  .embed #settings { display: none; }
+  .embed #settings, .embed .lang { display: none; }
 
   @media (max-width: 900px) {
     main { flex-direction: column; height: auto; }
@@ -133,7 +136,7 @@
 </head>
 <body>
 <main>
-  <button id="settings" title="Batería, USB, tarjeta SD, movimiento, instalar una app y la consola"><span class="open">⚙ Ajustes</span><span class="close">✕ Cerrar</span></button>
+  <button id="settings" data-i18n-title="settings.title"><span class="open" data-i18n="settings.open">⚙ Ajustes</span><span class="close" data-i18n="settings.close">✕ Cerrar</span></button>
   <div id="stage">
     <div id="device">
       <img class="body" src="kode-dot.png" alt="Kode Dot">
@@ -158,56 +161,60 @@
     <div class="card">
       <h2>Kode Dot</h2>
       <div class="row"><span id="state" class="off">conectando…</span>
-        <span style="flex:1"></span><button id="more" title="Batería, USB, tarjeta SD, instalar una app y la consola">Más</button><button id="reset" title="Reinicia el chip, como el circuito de reset de la placa (abajo + izquierda 1 s)">Reset</button><button id="power">Encender</button></div>
+        <span style="flex:1"></span><button id="more" data-i18n-title="more.title">Más</button><button id="reset" data-i18n-title="reset.title">Reset</button><button id="power">Encender</button></div>
       <div class="row"><span id="sound">Haz clic en el dispositivo para activar el sonido</span></div>
-      <div class="row"><label title="Lo que oye el micrófono del Mac llega al del Kode Dot. Apagado, el Kode Dot oye solo su altavoz y su ruido de fondo"><input id="micin" type="checkbox"> Micrófono del Mac</label></div>
-      <div class="row"><label class="upload" title="Una app compilada para el simulador: kode-sim build tu-app imprime su .bin">Instalar app (.bin)<input id="app" type="file" accept=".bin" hidden></label></div>
+      <div class="row"><label data-i18n-title="mic.title"><input id="micin" type="checkbox"> <span data-i18n="mic.label">Micrófono del Mac</span></label></div>
+      <div class="row"><label class="upload" data-i18n-title="app.title"><span data-i18n="app.label">Instalar app (.bin)</span><input id="app" type="file" accept=".bin" hidden></label></div>
     </div>
     <div class="card">
-      <h2>Batería</h2>
+      <h2 data-i18n="battery.h">Batería</h2>
       <div class="row"><input id="pct" type="range" min="0" max="100" value="80"><span id="pctv">80 %</span></div>
-      <div class="row"><label><input id="usb" type="checkbox" checked> USB conectado</label></div>
-      <div class="row"><label><input id="sdin" type="checkbox"> SD insertada</label></div>
-      <div class="row keys">KodeOS lo sigue como a una batería real: calcula el % por la tensión y lo mueve como mucho 2 puntos cada 2 s.</div>
+      <div class="row"><label><input id="usb" type="checkbox" checked> <span data-i18n="battery.usb">USB conectado</span></label></div>
+      <div class="row"><label><input id="sdin" type="checkbox"> <span data-i18n="battery.sd">SD insertada</span></label></div>
+      <div class="row keys" data-i18n="battery.note">KodeOS lo sigue como a una batería real: calcula el % por la tensión y lo mueve como mucho 2 puntos cada 2 s.</div>
     </div>
     <div class="card" id="motioncard">
-      <h2>Movimiento (IMU y brújula)</h2>
-      <div class="row"><label class="k" for="mpitch">Cabeceo</label><input id="mpitch" type="range" min="-90" max="90" value="0"><span class="v" id="mpitchv">0°</span></div>
-      <div class="row"><label class="k" for="mroll">Alabeo</label><input id="mroll" type="range" min="-180" max="180" value="0"><span class="v" id="mrollv">0°</span></div>
-      <div class="row"><label class="k" for="mhead">Rumbo</label><input id="mhead" type="range" min="0" max="359" value="0"><span class="v" id="mheadv">0° N</span></div>
-      <div class="row"><label class="k" for="mmag">Imán</label><input id="mmag" type="range" min="10" max="160" value="160" title="Distancia del imán a la parte trasera, en mm; al final, sin imán"><span class="v" id="mmagv">sin imán</span></div>
-      <div class="row"><button id="mshake" title="Una sacudida de 1,2 s">Sacudir</button><button id="mflat" title="Plano, mirando al norte, sin imán">Plano</button><span style="flex:1"></span></div>
+      <h2 data-i18n="motion.h">Movimiento (IMU y brújula)</h2>
+      <div class="row"><label class="k" for="mpitch" data-i18n="motion.pitch">Cabeceo</label><input id="mpitch" type="range" min="-90" max="90" value="0"><span class="v" id="mpitchv">0°</span></div>
+      <div class="row"><label class="k" for="mroll" data-i18n="motion.roll">Alabeo</label><input id="mroll" type="range" min="-180" max="180" value="0"><span class="v" id="mrollv">0°</span></div>
+      <div class="row"><label class="k" for="mhead" data-i18n="motion.heading">Rumbo</label><input id="mhead" type="range" min="0" max="359" value="0"><span class="v" id="mheadv">0° N</span></div>
+      <div class="row"><label class="k" for="mmag" data-i18n="motion.magnet">Imán</label><input id="mmag" type="range" min="10" max="160" value="160" data-i18n-title="motion.magnet.title"><span class="v" id="mmagv">sin imán</span></div>
+      <div class="row"><button id="mshake" data-i18n="motion.shake" data-i18n-title="motion.shake.title">Sacudir</button><button id="mflat" data-i18n="motion.flat" data-i18n-title="motion.flat.title">Plano</button><span style="flex:1"></span></div>
       <div class="row read" id="mread"></div>
     </div>
     <div class="card" id="usbcard">
-      <h2>Ordenador (USB)</h2>
+      <h2 data-i18n="usb.h">Ordenador (USB)</h2>
       <div class="row"><span id="usbst" class="st">sin cable</span><span style="flex:1"></span>
-        <button id="usbplug" title="Conecta o desconecta el cable USB entre el Kode Dot y este ordenador simulado">Conectar cable</button>
-        <button id="usbeject" hidden title="Expulsar el disco, como el sistema operativo antes de sacar el cable">Expulsar</button></div>
+        <button id="usbplug" data-i18n-title="usb.plug.title">Conectar cable</button>
+        <button id="usbeject" hidden data-i18n="usb.eject" data-i18n-title="usb.eject.title">Expulsar</button></div>
       <div class="row muted" id="usbdev" hidden></div>
       <div id="usbdisk" hidden>
         <div class="row muted" id="usbvol"></div>
         <div class="row"><ul id="usbfiles" style="flex:1"></ul></div>
-        <div class="row"><label class="upload" title="Copia un archivo (hasta 700 KB) a la raíz del disco">Copiar un archivo<input id="usbput" type="file" hidden></label>
-          <button id="usbrand" title="Copia 1 MB de bytes aleatorios para medir la velocidad">Copiar 1 MB</button></div>
+        <div class="row"><label class="upload" data-i18n-title="usb.put.title"><span data-i18n="usb.put">Copiar un archivo</span><input id="usbput" type="file" hidden></label>
+          <button id="usbrand" data-i18n="usb.rand" data-i18n-title="usb.rand.title">Copiar 1 MB</button></div>
         <div class="row muted" id="usblast"></div>
       </div>
       <div id="usbkbd" hidden>
-        <div class="row"><span class="muted">El teclado escribe:</span><span style="flex:1"></span>
-          <select id="usblayout" title="Distribución del teclado del ordenador"><option value="es">ES</option><option value="us">US</option></select>
-          <button id="usbclear">Borrar</button></div>
+        <div class="row"><span class="muted" data-i18n="usb.types">El teclado escribe:</span><span style="flex:1"></span>
+          <select id="usblayout" data-i18n-title="usb.layout.title"><option value="es">ES</option><option value="us">US</option></select>
+          <button id="usbclear" data-i18n="usb.clear">Borrar</button></div>
         <div class="row"><pre id="usbtyped"></pre></div>
       </div>
-      <details class="row" style="margin-top:8px"><summary class="muted">Lo que hace el ordenador</summary><pre id="usblog"></pre></details>
+      <details class="row" style="margin-top:8px"><summary class="muted" data-i18n="usb.log">Lo que hace el ordenador</summary><pre id="usblog"></pre></details>
     </div>
     <div class="card console">
-      <h2>Consola</h2>
+      <h2 data-i18n="console.h">Consola</h2>
       <pre id="log"></pre>
       <input id="cmd" placeholder="help" autocomplete="off" spellcheck="false">
     </div>
-    <div class="keys">Teclas: <kbd>T</kbd> arriba · <kbd>B</kbd> abajo · <kbd>←↑→↓</kbd> cruceta · clic en el cristal = dedo · <kbd>B</kbd>+<kbd>←</kbd> 1 s = reset · en una app, <kbd>B</kbd> mantenido vuelve a KodeOS</div>
+    <div class="keys" data-i18n-html="keys">Teclas: <kbd>T</kbd> arriba · <kbd>B</kbd> abajo · <kbd>←↑→↓</kbd> cruceta · clic en el cristal = dedo · <kbd>B</kbd>+<kbd>←</kbd> 1 s = reset · en una app, <kbd>B</kbd> mantenido vuelve a KodeOS</div>
+    <div class="lang" role="group" aria-label="Language / Idioma">
+      <button id="lang-es" data-lang="es">ES</button><button id="lang-en" data-lang="en">EN</button>
+    </div>
   </div>
 </main>
+<script src="i18n.js"></script>
 <script src="sim.js"></script>
 </body>
 </html>

@@ -125,10 +125,12 @@ works), click the buttons or use the keys - <kbd>T</kbd> top,
 <kbd>B</kbd> bottom, the arrows for the D-pad. **Ajustes** slides out the
 rest: power and reset, the battery and the USB cable, the microSD, motion,
 the computer on the USB cable, installing an app and the console.
-"Micrófono del Mac" sends the Mac's microphone to the Kode Dot's; it is on
-unless you turn it off, and the page remembers that. Off, the Kode Dot hears
-only its own speaker through the case and its ADC's floor, as on a quiet
-desk. The console takes the device's commands (`help`, `info`, `bat_info`,
+The page is in English and Spanish: it follows the browser's language, and
+the **ES | EN** switch at the bottom of that panel changes it, remembered.
+This guide names the Spanish labels. "Micrófono del Mac" sends the Mac's
+microphone to the Kode Dot's; it is on unless you turn it off, and the page
+remembers that. Off, the Kode Dot hears only its own speaker through the case
+and its ADC's floor, as on a quiet desk. The console takes the device's commands (`help`, `info`, `bat_info`,
 …) and the terminal running `kode-sim` is the console too.
 
 `http://127.0.0.1:PORT/?embed=1` is the same page made to live inside

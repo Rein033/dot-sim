@@ -35,7 +35,7 @@ async def _past_history(w):
 
 async def test_the_page_is_served(sim):
     async with aiohttp.ClientSession() as s:
-        for path, kind in (("", "text/html"), ("sim.js", "javascript"), ("audio-worklet.js", "javascript"),
+        for path, kind in (("", "text/html"), ("sim.js", "javascript"), ("i18n.js", "javascript"), ("audio-worklet.js", "javascript"),
                            ("kode-dot.png", "image/png")):
             r = await s.get(sim.url + path)
             assert r.status == 200, path
