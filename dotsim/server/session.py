@@ -170,13 +170,9 @@ class Session:
         if text.startswith("hub mirror "):
             self.mirror = text.endswith("1")
             return
-        if not text.startswith("st "):
-            await self.send_json(t="link", dir="uit", s=text)
         p = self.peer
         if p:
             p.send_line("n " + text)
-            if not text.startswith("st "):
-                await p.send_json(t="link", dir="in", s=text)
 
     async def send_mirror(self, buf, w, h):
         p = self.peer

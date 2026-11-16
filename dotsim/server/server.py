@@ -272,7 +272,7 @@ async def serve_ws(request):
             elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                 break
     except Exception as e:  # noqa: BLE001 - the browser gets the reason
-        log.exception("sessie %s", app_id)
+        log.exception("session %s", app_id)
         if not ws.closed:
             await ws.send_str(json.dumps({"t": "error", "s": str(e)}))
     finally:
