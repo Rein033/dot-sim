@@ -52,7 +52,7 @@
 ### Task 2: Battery, USB, motion and console in the host-sim
 
 **Files:**
-- Modify: `dotsim/hostsim/components/khal/src/kdotsim_bridge.c` (new input lines `p <pct> <usb>`, `m <ax> <ay> <az> <gx> <gy> <gz> <mx> <my> <mz> <temp>`, `c <text>`; console output as `L` records)
+- Modify: `dotsim/hostsim/components/khal/src/kdotsim_bridge.c` (new input lines `p <pct> <usb>`, `i <ax> <ay> <az> <gx> <gy> <gz> <mx> <my> <mz> <temp>` (`m` is taken by the mirror picture), `c <text>`; console output as `L` records)
 - Modify: `dotsim/hostsim/components/khal/src/khal_i2c_sim.c` (BQ25896 VBUS/charge state, CW2217 SOC/voltage, QMI8658 and QMC5883P registers from the latest `m` line)
 - Test: `dotsim/tests/test_hostsim_inputs.py` (builds `apps/slang` once, starts the ELF with a socket, sends lines, reads the I2C model state through a `?` debug line)
 
@@ -60,7 +60,7 @@
 - Consumes: Task 1's `kd_to_sim_lines` output format.
 - Produces: the sim answers `? bat` with `bat <pct> <usb>` and `? imu` with the ten values, for tests.
 
-- [ ] **Step 1: Write failing tests** `test_battery_line_sets_gauge` (send `p 15 0`, expect `bat 15 0`), `test_motion_line_sets_imu`, `test_console_roundtrip` (send `c help`, expect an `L` record containing `help`).
+- [ ] **Step 1: Write failing tests** `test_battery_line_sets_gauge` (send `p 15 0`, expect `bat 15 0`), `test_motion_line_sets_imu` (an `i` line), `test_console_roundtrip` (send `c help`, expect an `L` record containing `help`).
 - [ ] **Step 2: Run** → FAIL.
 - [ ] **Step 3: Implement** in the two C files; values in the chips' own register formats from kode-sdk's drivers.
 - [ ] **Step 4: Run** → PASS.
