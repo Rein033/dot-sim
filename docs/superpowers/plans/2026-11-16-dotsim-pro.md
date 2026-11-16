@@ -109,6 +109,18 @@ plus a Playwright check of its card), then merge to main and push (live).
 - Tests: `test_sd_insert_remove` (`? sd` → `sd <0|1> <files>` through kdrv_sd), `test_sd_file_seen_by_app`
   (put a file, `? sd` counts it), `test_sd_name_traversal_refused`.
 
+### Task H1b: sandbox caps (from H1's re-review)
+
+- `--tmpfs /tmp` in the sim's bwrap gets `--size 33554432` (32 MB).
+- The persistent `--bind DATA/<app> /data` (host disk, shared by all sessions of an app, uncapped) becomes
+  per-session and capped: a `--size 16777216 --tmpfs /data` with the app's saved data (`kk_best_*`,
+  NVS file, `storage/`) copied in at start and copied back at the end only when it is under 1 MB
+  in total; the SD tmpfs stays mounted at /data/sd inside it.
+- Inode limit: `--tmpfs` options cannot cap inodes in bwrap 0.8; cap file count when copying back (≤ 200).
+- Tests: an app writing 50 MB into /tmp and into /data is stopped at the cap; a high score
+  (`kk_best_put`) survives a restart of the app; two sessions of the same app do not see each
+  other's /data writes until one ends.
+
 ### Task H2: USB computer
 
 - The Dot as a USB device seen by a simulated computer: HID keyboard reports the app sends
