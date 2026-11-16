@@ -41,6 +41,8 @@ import numpy as np
 from aiohttp import web, WSMsgType
 from PIL import Image
 
+import kdwire
+
 ROOT = Path(__file__).parent
 STATIC = Path(os.environ.get("KODE_STATIC", ROOT.parent / "web"))
 PORT = int(os.environ.get("KODE_PORT", "8000"))
@@ -126,21 +128,53 @@ def wall_clock_line():
 
 
 def rgb565_to_jpeg(buf, w, h):
-    px = np.frombuffer(buf, dtype="<u2", count=w * h).reshape(h, w)
-    rgb = np.empty((h, w, 3), dtype=np.uint8)
-    rgb[..., 0] = ((px >> 11) & 0x1F) * 255 // 31
-    rgb[..., 1] = ((px >> 5) & 0x3F) * 255 // 63
-    rgb[..., 2] = (px & 0x1F) * 255 // 31
-    bio = io.BytesIO()
-    Image.fromarray(rgb, "RGB").save(bio, "JPEG", quality=JPEG_Q)
-    return bio.getvalue()
+    return kdwire.rgb565_to_jpeg(buf, w, h, JPEG_Q)
+
+
+class FrameSender:
+    """Sends a socket's binary frames, keeping only the newest one waiting.
+
+    put() never blocks and never queues: while a send is in flight a newer
+    frame replaces the one still pending, so a slow browser sees fewer frames
+    instead of falling behind.
+    """
+
+    def __init__(self, ws):
+        self.ws = ws
+        self.pending = None
+        self.evt = asyncio.Event()
+        self.task = None
+
+    def start(self):
+        self.task = asyncio.create_task(self._run())
+
+    def put(self, data):
+        self.pending = data
+        self.evt.set()
+
+    async def _run(self):
+        while True:
+            await self.evt.wait()
+            self.evt.clear()
+            data, self.pending = self.pending, None
+            if data is not None and not self.ws.closed:
+                await self.ws.send_bytes(data)
+
+    async def stop(self):
+        if self.task:
+            self.task.cancel()
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                pass
 
 
 class Session:
     """One browser tab, one sim process."""
 
-    def __init__(self, ws, app_id, role="dot", user=""):
+    def __init__(self, ws, app_id, role="dot", user="", sender=None):
         self.ws = ws
+        self.sender = sender   # set on the KD socket (/ws-kd), None on the JSON one
         self.app_id = app_id
         self.role = role
         self.user = user
@@ -276,7 +310,9 @@ class Session:
                 typ = chr(hdr[0])
                 (n,) = struct.unpack("<I", hdr[1:])
                 body = await self.reader.readexactly(n)
-                if typ == "F":
+                if self.sender and typ not in "FNX":
+                    await self.send_kd(typ, body)
+                elif typ == "F":
                     w, h = struct.unpack("<HH", body[:4])
                     self.frame = (w, h, body[4:])
                     self.frame_evt.set()
@@ -311,6 +347,16 @@ class Session:
                 pass
         await self.send_json(t="ended", rc=rc, err=err.decode(errors="replace")[-1500:])
 
+    async def send_kd(self, typ, body):
+        """A sim record to the page, as KD frames (JSON text for the console)."""
+        if self.ws.closed:
+            return
+        for out in kdwire.sim_record_to_kd(typ, body):
+            if out[:1] == b"{":
+                await self.ws.send_str(out.decode())
+            else:
+                await self.ws.send_bytes(out)
+
     async def pump_frames(self):
         """Latest frame to the browser, at most FPS a second, dropping what it cannot keep up with."""
         loop = asyncio.get_running_loop()
@@ -327,7 +373,16 @@ class Session:
             last = time.monotonic()
             if self.ws.closed:
                 break
-            await self.ws.send_bytes(b"J" + jpg)
+            if self.sender:
+                self.sender.put(kdwire.encode(kdwire.FB_JPEG, struct.pack("<4H", 0, 0, w, h) + jpg))
+            else:
+                await self.ws.send_bytes(b"J" + jpg)
+
+    def on_kd(self, data):
+        """Binary KD frames from the page, to the sim's lines."""
+        for typ, payload in kdwire.decode(data):
+            for line in kdwire.kd_to_sim_lines(typ, payload):
+                self.send_line(line)
 
     def send_line(self, line):
         if self.writer and not self.writer.is_closing():
@@ -335,7 +390,10 @@ class Session:
 
     def on_browser(self, msg):
         t = msg.get("t")
-        if t == "btn":
+        if "console_in" in msg:
+            for line in kdwire.kd_to_sim_lines(kdwire.CONSOLE_IN, str(msg["console_in"]).encode()):
+                self.send_line(line)
+        elif t == "btn":
             bit = BTN_BITS.get(msg.get("b"))
             if bit:
                 self.buttons = (self.buttons | bit) if msg.get("d") else (self.buttons & ~bit)
@@ -356,6 +414,8 @@ class Session:
     async def stop(self):
         self.leave_hub()
         self.closed = True
+        if self.sender:
+            await self.sender.stop()
         self.frame_evt.set()
         if self.writer:
             try:
@@ -723,6 +783,15 @@ async def status(request):
 
 
 async def ws_handler(request):
+    return await serve_ws(request, kd=False)
+
+
+async def ws_kd_handler(request):
+    """The same session over the KD wire: binary frames both ways."""
+    return await serve_ws(request, kd=True)
+
+
+async def serve_ws(request, kd):
     ws = web.WebSocketResponse(heartbeat=20, max_msg_size=1 << 20, compress=False)
     await ws.prepare(request)
     app_id = request.query.get("app", "")
@@ -741,13 +810,16 @@ async def ws_handler(request):
     role = request.query.get("role", "dot")
     role = role if role in ("dot", "watch") else "dot"
     # Guests (no Remote-User from the proxy) each get a hub of their own, so they never see each other's Link.
-    s = Session(ws, app_id, role, request.headers.get("Remote-User", "") or f"anon-{id(ws):x}")
+    sender = FrameSender(ws) if kd else None
+    s = Session(ws, app_id, role, request.headers.get("Remote-User", "") or f"anon-{id(ws):x}", sender)
     sessions.add(s)
     tasks = []
     try:
         await s.start()
         s.join_hub()
         await s.send_json(t="started", app=app_id, role=role)
+        if sender:
+            sender.start()
         tasks = [asyncio.create_task(s.pump_sim()), asyncio.create_task(s.pump_frames())]
         async for msg in ws:
             if msg.type == WSMsgType.TEXT:
@@ -755,6 +827,8 @@ async def ws_handler(request):
                     s.on_browser(json.loads(msg.data))
                 except (ValueError, TypeError):
                     pass
+            elif msg.type == WSMsgType.BINARY and kd:
+                s.on_kd(msg.data)
             elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                 break
     except Exception as e:  # noqa: BLE001 - the browser gets the reason
@@ -778,6 +852,7 @@ def make_app():
     app.router.add_get("/docs", docs_page)
     app.router.add_post("/api/notify", api_notify)
     app.router.add_get("/ws", ws_handler)
+    app.router.add_get("/ws-kd", ws_kd_handler)
     app.router.add_post("/api/build", api_build)
     app.router.add_get("/api/build/{id}", api_job)
     app.router.add_get("/api/sources", api_sources)
