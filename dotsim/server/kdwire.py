@@ -34,7 +34,7 @@ BATTERY = 0x83          # u8 pct, u8 usb
 CONSOLE_IN = 0x84
 MOTION = 0x8D           # ten i32 LE
 
-# kode-sim's button bits -> the sim process's mask (server.BTN_BITS).
+# kode-sim's button bits -> the sim process's mask (KDOTSIM_BTN_* in hostsim/components/khal/include/kdotsim.h).
 _KD_BTN = ((1, 16), (2, 32), (4, 4), (8, 8), (16, 1), (32, 2))  # top bot left right up down
 
 TONE_RATE = 16000

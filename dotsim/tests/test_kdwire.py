@@ -1,7 +1,9 @@
 """KD wire: framing, record translation and the newest-frame-only sender."""
 import asyncio
 import json
+import re
 import struct
+from pathlib import Path
 
 import pytest
 
@@ -37,8 +39,11 @@ def test_buttons_bit_order():
     cases = {1: 16, 2: 32, 4: 4, 8: 8, 16: 1, 32: 2, 0: 0, 1 | 16: 17}
     for kd, sim in cases.items():
         assert kdwire.kd_to_sim_lines(kdwire.BUTTONS, bytes([kd])) == [f"b {sim}"]
-    for name, bit in {"up": 1, "down": 2, "left": 4, "right": 8, "top": 16, "bot": 32}.items():
-        assert server.BTN_BITS[name] == bit  # the sim side of the map is today's
+    # the sim side of the map is the bridge's own (KDOTSIM_BTN_* in kdotsim.h)
+    h = (Path(__file__).resolve().parents[1] / "hostsim/components/khal/include/kdotsim.h").read_text()
+    for name, bit in {"UP": 1, "DOWN": 2, "LEFT": 4, "RIGHT": 8, "TOP": 16, "BOT": 32}.items():
+        m = re.search(r"#define KDOTSIM_BTN_%s\s+\(1U << (\d)\)" % name, h)
+        assert m and 1 << int(m.group(1)) == bit, name
 
 
 def test_inputs_to_lines():
@@ -110,6 +115,6 @@ async def test_frame_dropped_when_socket_busy():
     await fs.stop()
 
 
-def test_both_sockets_routed():
+def test_kd_socket_routed():
     paths = {r.resource.canonical for r in server.make_app().router.routes() if r.method == "GET"}
-    assert {"/ws", "/ws-legacy"} <= paths
+    assert "/ws" in paths and "/ws-legacy" not in paths

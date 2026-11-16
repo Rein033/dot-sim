@@ -18,15 +18,13 @@ same thing: text messages both ways, plus "hub peer 0|1" and "sys ..." from
 the hub itself.
 
 To the browser, on /ws (kode-sim's page, web/ at /, with dotsim/web/ext.js on it):
-KD frames (kdwire.py; the screen as FB_JPEG) and JSON text. On /ws-legacy (no
-page uses it now): binary 'J'+jpeg or 'P'+rate(u32)+pcm, and JSON text.
+KD frames (kdwire.py; the screen as FB_JPEG) and JSON text.
 
 Not made, approved or supported by Kode.
 """
 import asyncio
 import base64
 import datetime
-import io
 import json
 import logging
 import os
@@ -43,7 +41,6 @@ from pathlib import Path
 
 import numpy as np
 from aiohttp import web, WSMsgType
-from PIL import Image
 
 import kdwire
 
@@ -60,7 +57,6 @@ FPS = 30
 JPEG_Q = 80
 
 log = logging.getLogger("kode")
-BTN_BITS = {"up": 1, "down": 2, "left": 4, "right": 8, "top": 16, "bot": 32}
 sessions = set()
 hub = {}           # user -> {"dot": Session, "watch": Session}
 MIRROR_GAP = 0.15  # spiegelbeeld hooguit ~6 keer per seconde
@@ -463,9 +459,9 @@ def sim_cmd(elf, run_dir, seed):
 class Session:
     """One browser tab, one sim process."""
 
-    def __init__(self, ws, app_id, role="dot", user="", sender=None):
+    def __init__(self, ws, app_id, role="dot", user=""):
         self.ws = ws
-        self.sender = sender   # set on the KD socket (/ws), None on the JSON one (/ws-legacy)
+        self.sender = FrameSender(ws)   # the screen's KD frames, newest only
         self.app_id = app_id
         self.role = role
         self.user = user
@@ -478,7 +474,6 @@ class Session:
         self.frame = None          # latest RGB565 frame (w, h, bytes)
         self.frame_evt = asyncio.Event()
         self.closed = False
-        self.buttons = 0
         self.sd_fd = None          # the card's directory, once the sim has started (sd_open)
         self.sd_lock = asyncio.Lock()
         self.kid = None
@@ -603,32 +598,18 @@ class Session:
                 typ = chr(hdr[0])
                 (n,) = struct.unpack("<I", hdr[1:])
                 body = await self.reader.readexactly(n)
-                if self.sender and typ not in "FNX":
-                    await self.send_kd(typ, body)
-                elif typ == "F":
+                if typ == "F":
                     w, h = struct.unpack("<HH", body[:4])
                     self.frame = (w, h, body[4:])
                     self.frame_evt.set()
                     if self.role == "watch":
                         await self.send_mirror(body[4:], w, h)
-                elif typ == "E":
-                    await self.send_json(t="led", r=body[0], g=body[1], b=body[2])
-                elif typ == "B":
-                    await self.send_json(t="bright", v=body[0])
-                elif typ == "H":
-                    await self.send_json(t="haptic", ms=struct.unpack("<I", body)[0])
-                elif typ == "T":
-                    hz, ms = struct.unpack("<II", body[:8])
-                    await self.send_json(t="tone", hz=hz, ms=ms, vol=body[8])
-                elif typ == "P":
-                    if not self.ws.closed:
-                        await self.ws.send_bytes(b"P" + body)
-                elif typ == "L":
-                    await self.send_json(t="log", s=body.decode(errors="replace"))
                 elif typ == "N":
                     await self.on_link(body.decode(errors="replace").replace("\n", " "))
                 elif typ == "X":
                     await self.send_json(t="exit", why=body.decode(errors="replace"))
+                else:
+                    await self.send_kd(typ, body)
         except (asyncio.IncompleteReadError, ConnectionError):
             pass
         rc = await self.proc.wait() if self.proc else None
@@ -666,10 +647,7 @@ class Session:
             last = time.monotonic()
             if self.ws.closed:
                 break
-            if self.sender:
-                self.sender.put(kdwire.encode(kdwire.FB_JPEG, struct.pack("<4H", 0, 0, w, h) + jpg))
-            else:
-                await self.ws.send_bytes(b"J" + jpg)
+            self.sender.put(kdwire.encode(kdwire.FB_JPEG, struct.pack("<4H", 0, 0, w, h) + jpg))
 
     def on_kd(self, data):
         """Binary KD frames from the page, to the sim's lines."""
@@ -706,7 +684,7 @@ class Session:
             await self.send_json(**kw)
 
     def on_browser(self, msg):
-        t = msg.get("t")
+        """A JSON text message from the page: the console line, the microSD switch and its files."""
         if "console_in" in msg:
             text = str(msg["console_in"]).strip()
             if text.startswith("?") and text[1:].strip() in PROBES:
@@ -714,16 +692,6 @@ class Session:
                 return
             for line in kdwire.kd_to_sim_lines(kdwire.CONSOLE_IN, str(msg["console_in"]).encode()):
                 self.send_line(line)
-        elif t == "btn":
-            bit = BTN_BITS.get(msg.get("b"))
-            if bit:
-                self.buttons = (self.buttons | bit) if msg.get("d") else (self.buttons & ~bit)
-                self.send_line(f"b {self.buttons}")
-        elif t == "touch":
-            down = 0 if msg.get("k") == "up" else 1
-            x = int(msg.get("x", 0))
-            y = int(msg.get("y", 0))
-            self.send_line(f"t {down} {x} {y}")
         elif "sd" in msg:
             v = msg["sd"]
             self.send_line("s " + ("1" if (v.get("in") if isinstance(v, dict) else v) else "0"))
@@ -733,13 +701,6 @@ class Session:
             asyncio.ensure_future(self.sd_job("put", msg["sd_put"]))
         elif "sd_get" in msg and isinstance(msg["sd_get"], dict):
             asyncio.ensure_future(self.sd_job("get", msg["sd_get"]))
-        elif t == "dock":
-            self.send_line(f"n sys dock {1 if msg.get('v') else 0}")
-        elif t == "notify":
-            text = str(msg.get("s", ""))[:200].replace("\n", " ")
-            target = self if self.role == "watch" else self.peer
-            if text and target:
-                target.send_line("n notify " + text)
 
     async def stop(self):
         self.leave_hub()
@@ -750,8 +711,7 @@ class Session:
             except OSError:
                 pass
             self.sd_fd = None
-        if self.sender:
-            await self.sender.stop()
+        await self.sender.stop()
         self.frame_evt.set()
         if self.writer:
             try:
@@ -1139,17 +1099,12 @@ async def status(request):
     })
 
 
-async def ws_legacy_handler(request):
-    """The JSON socket of the old page: 'J'+jpeg, 'P'+pcm and JSON text."""
-    return await serve_ws(request, kd=False)
-
-
 async def ws_kd_handler(request):
     """kode-sim's page: the session over the KD wire, binary frames both ways."""
-    return await serve_ws(request, kd=True)
+    return await serve_ws(request)
 
 
-async def serve_ws(request, kd):
+async def serve_ws(request):
     ws = web.WebSocketResponse(heartbeat=20, max_msg_size=1 << 20, compress=False)
     await ws.prepare(request)
     app_id = request.query.get("app", "")
@@ -1168,16 +1123,14 @@ async def serve_ws(request, kd):
     role = request.query.get("role", "dot")
     role = role if role in ("dot", "watch") else "dot"
     # Guests (no Remote-User from the proxy) each get a hub of their own, so they never see each other's Link.
-    sender = FrameSender(ws) if kd else None
-    s = Session(ws, app_id, role, request.headers.get("Remote-User", "") or f"anon-{id(ws):x}", sender)
+    s = Session(ws, app_id, role, request.headers.get("Remote-User", "") or f"anon-{id(ws):x}")
     sessions.add(s)
     tasks = []
     try:
         await s.start()
         s.join_hub()
         await s.send_json(t="started", app=app_id, role=role)
-        if sender:
-            sender.start()
+        s.sender.start()
         tasks = [asyncio.create_task(s.pump_sim()), asyncio.create_task(s.pump_frames())]
         async for msg in ws:
             if msg.type == WSMsgType.TEXT:
@@ -1185,7 +1138,7 @@ async def serve_ws(request, kd):
                     s.on_browser(json.loads(msg.data))
                 except (ValueError, TypeError):
                     pass
-            elif msg.type == WSMsgType.BINARY and kd:
+            elif msg.type == WSMsgType.BINARY:
                 s.on_kd(msg.data)
             elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                 break
@@ -1210,7 +1163,6 @@ def make_app():
     app.router.add_get("/docs", docs_page)
     app.router.add_post("/api/notify", api_notify)
     app.router.add_get("/ws", ws_kd_handler)
-    app.router.add_get("/ws-legacy", ws_legacy_handler)
     app.router.add_post("/api/build", api_build)
     app.router.add_get("/api/build/{id}", api_job)
     app.router.add_get("/api/sources", api_sources)
