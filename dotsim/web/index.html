@@ -135,7 +135,8 @@
       On the home screen, TOP or a tap opens an app; swipe or ←/→ for more.
       Hold TOP and BOT for a second (or <kbd>Esc</kbd>) to go back home.
     </div>
-    <p class="fine" id="legal">Dot Sim is an unofficial simulator for the <a href="https://kode.diy">Kode Dot</a>. It is not made, approved or supported by Kode. Kode, Kode Dot, kodeOS and Kody are trademarks of Kode.</p>
+    <p class="fine" id="legal">Dot Sim is an unofficial simulator for the <a href="https://kode.diy">Kode Dot</a>. It is not made, approved or supported by Kode. Kode, Kode Dot, kodeOS and Kody are trademarks of Kode.
+      Source: <a href="https://github.com/Rein033/dot-sim">github.com/Rein033/dot-sim</a><span id="ver"></span>.</p>
   </aside>
   <section class="editor card" id="editor">
     <h2>Code</h2>
@@ -419,6 +420,7 @@
     try {
       const s = await (await fetch('/api/status')).json();
       document.getElementById('buildbox').hidden = !s.user;
+      if (s.version) document.getElementById('ver').innerHTML = ' at <a href="https://github.com/Rein033/dot-sim/commit/' + encodeURIComponent(s.version) + '">' + esc(s.version) + '</a>';
       const mine = L.apps.filter((a) => a.mine);
       const order = ['slang', 'muurbreker', 'blokkenregen', 'schuif', 'fladder', 'tafeltennis', 'kleurgeheugen', 'reflex', 'kody_kart', 'krabbel', 'stopwatch'];
       const rank = (a) => { const k = order.indexOf(a.id); return k < 0 ? 99 : k; };

@@ -4,6 +4,8 @@
 > machine, with a home screen, a mascot of its own (Dash, the dog), a code editor that builds
 > and runs your C in seconds, and ten small apps with pixel-art icons.
 >
+> **Try it:** [kode.uselesssite.nl](https://kode.uselesssite.nl) runs the latest `main` of this fork.
+>
 > dot-sim is not made, approved or supported by Kode. Kode, Kode Dot, kodeOS and Kody are
 > trademarks of Kode ([TRADEMARKS.md](https://github.com/kodediy/.github/blob/main/TRADEMARKS.md)).
 > The pictures of the Kode Dot (`web/kode-dot.png`, `dotsim/web/kode-dot.png`) and of Kody

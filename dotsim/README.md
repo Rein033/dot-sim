@@ -3,6 +3,9 @@
 `dotsim/` is what this fork adds to kode-sim: a Kode Dot that runs in any browser, served
 from one Linux machine, for many visitors at once. It is the code behind the public Dot Sim.
 
+**Live:** [kode.uselesssite.nl](https://kode.uselesssite.nl) runs the latest `main` of this repository; a new commit is
+live within about five minutes. The page's footer names the commit it runs.
+
 It is **not** kode-sim's emulator. kode-sim runs the real firmware instruction by
 instruction on esp-emu, on your own computer. Dot Sim builds an app for ESP-IDF's
 `linux` target on the real kode-sdk, with the board simulated under it, and runs it as

@@ -65,6 +65,22 @@ async def no_cache(request, handler):
     return resp
 
 
+def git_version():
+    """The commit this server runs, for the page's footer: KODE_VERSION, else the checkout's HEAD."""
+    v = os.environ.get("KODE_VERSION", "")
+    if v:
+        return v
+    try:
+        import subprocess
+        return subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"], capture_output=True,
+                              text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+VERSION = git_version()
+
+
 def app_list():
     out = []
     for d in sorted(BUILDS.glob("*/kode_sim_app.elf")):
@@ -699,6 +715,7 @@ async def api_notify(request):
 async def status(request):
     return web.json_response({
         "user": request.headers.get("Remote-User", ""),
+        "version": VERSION,
         "sessions": len(sessions),
         "apps": [a for a in app_list()
                  if request.headers.get("Remote-User") or a["id"] not in PRIVATE_APPS],
