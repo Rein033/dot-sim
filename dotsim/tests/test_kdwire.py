@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import kdwire
+import session
 import server
 
 
@@ -103,7 +104,7 @@ class FakeWs:
 @pytest.mark.asyncio
 async def test_frame_dropped_when_socket_busy():
     ws = FakeWs()
-    fs = server.FrameSender(ws)
+    fs = session.FrameSender(ws)
     fs.start()
     fs.put(b"one")
     await asyncio.sleep(0.01)   # sender is now stuck inside send_bytes(one)

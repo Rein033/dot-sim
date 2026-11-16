@@ -6,7 +6,8 @@ import time
 
 import pytest
 
-import server
+import sandbox
+import sdcard
 
 needs_bwrap = pytest.mark.skipif(not shutil.which("bwrap"), reason="needs bwrap")
 
@@ -21,16 +22,16 @@ class Sim:
         elf.write_text("#!/bin/sh\n" + script + "\nsleep 60\n")
         elf.chmod(0o755)
         seed = self.dir / "seed"
-        server.data_seed(saved, seed)
+        sandbox.data_seed(saved, seed)
         (self.dir / "run").mkdir()
-        self.p = subprocess.Popen(server.sim_cmd(elf, self.dir / "run", seed),
+        self.p = subprocess.Popen(sandbox.sim_cmd(elf, self.dir / "run", seed),
                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.data = self.card = None
         end = time.time() + 10
         while time.time() < end and self.data is None:
-            kid = server.sd_child_pid(self.p.pid)
+            kid = sandbox.sd_child_pid(self.p.pid)
             if kid:
-                self.data, self.card = server.data_open(kid), server.sd_open(kid)
+                self.data, self.card = sandbox.data_open(kid), sdcard.sd_open(kid)
             time.sleep(0.05)
         assert self.data is not None and self.card is not None
         self.saved = saved
@@ -38,16 +39,16 @@ class Sim:
     def wait_done(self):
         end = time.time() + 15
         while time.time() < end:
-            if server.sd_read(self.card, "done")[0] is not None:
+            if sdcard.sd_read(self.card, "done")[0] is not None:
                 return
             time.sleep(0.1)
         raise AssertionError("app did not finish: " + str(self.p.poll()))
 
     def res(self, name="res"):
-        return (server.sd_read(self.card, name)[0] or b"").decode()
+        return (sdcard.sd_read(self.card, name)[0] or b"").decode()
 
     def end(self):
-        ok = server.data_save(self.data, self.saved)
+        ok = sandbox.data_save(self.data, self.saved)
         self.close()
         return ok
 
@@ -172,16 +173,16 @@ def test_saved_data_with_a_link_is_not_followed_into_the_seed(tmp_path):
     (saved / "d").symlink_to(tmp_path)
     (saved / "ok").write_text("yes")
     seed = tmp_path / "seed"
-    server.data_seed(saved, seed)
+    sandbox.data_seed(saved, seed)
     assert os.listdir(seed) == ["ok"]
 
 
 def test_saved_data_too_big_starts_empty(tmp_path):
     saved = tmp_path / "saved"
     saved.mkdir()
-    (saved / "big").write_bytes(b"x" * (server.SAVE_MAX_BYTES + 1))
+    (saved / "big").write_bytes(b"x" * (sandbox.SAVE_MAX_BYTES + 1))
     seed = tmp_path / "seed"
-    server.data_seed(saved, seed)
+    sandbox.data_seed(saved, seed)
     assert os.listdir(seed) == []
 
 
@@ -198,7 +199,7 @@ def test_concurrent_saves_leave_one_complete_tree(tmp_path):
             (d / ("f%d_%d" % (i, j))).write_bytes(b"x" * 1000)
         srcs.append(os.open(d, os.O_RDONLY | os.O_DIRECTORY))
     res = []
-    ts = [threading.Thread(target=lambda fd=fd: res.append(server.data_save(fd, saved))) for fd in srcs]
+    ts = [threading.Thread(target=lambda fd=fd: res.append(sandbox.data_save(fd, saved))) for fd in srcs]
     [t.start() for t in ts]
     [t.join() for t in ts]
     [os.close(fd) for fd in srcs]
@@ -218,7 +219,7 @@ def test_a_data_dir_with_100k_files_is_refused_quickly(tmp_path):
     saved.mkdir()
     (saved / "keep").write_text("1")
     t = time.time()
-    assert server.data_save(fd, saved) is False
+    assert sandbox.data_save(fd, saved) is False
     os.close(fd)
     assert time.time() - t < 1.0
     assert os.listdir(saved) == ["keep"]
@@ -227,14 +228,14 @@ def test_a_data_dir_with_100k_files_is_refused_quickly(tmp_path):
 def test_rejected_seed_is_reported_so_the_old_data_is_not_replaced(tmp_path):
     saved = tmp_path / "saved"
     saved.mkdir()
-    for i in range(server.SAVE_MAX_FILES + 5):
+    for i in range(sandbox.SAVE_MAX_FILES + 5):
         (saved / ("f%d" % i)).write_text("")
-    assert server.data_seed(saved, tmp_path / "seed") is False
+    assert sandbox.data_seed(saved, tmp_path / "seed") is False
     assert os.listdir(tmp_path / "seed") == []
-    assert len(os.listdir(saved)) == server.SAVE_MAX_FILES + 5       # untouched
+    assert len(os.listdir(saved)) == sandbox.SAVE_MAX_FILES + 5       # untouched
     (tmp_path / "ok").mkdir()
-    assert server.data_seed(tmp_path / "ok", tmp_path / "seed2") is True
-    assert server.data_seed(tmp_path / "missing", tmp_path / "seed3") is True
+    assert sandbox.data_seed(tmp_path / "ok", tmp_path / "seed2") is True
+    assert sandbox.data_seed(tmp_path / "missing", tmp_path / "seed3") is True
 
 
 @needs_bwrap
@@ -262,7 +263,7 @@ def test_the_sim_socket_still_connects_through_the_read_only_run_dir(sims, tmp_p
     elf.write_text("#!/bin/sh\nexec python3 -c \"import socket;c=socket.socket(socket.AF_UNIX);c.connect('/run/sim/sim.sock')\"\n")
     elf.chmod(0o755)
     (tmp_path / "seed9").mkdir()
-    cmd = server.sim_cmd(elf, run, tmp_path / "seed9")
+    cmd = sandbox.sim_cmd(elf, run, tmp_path / "seed9")
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     srv.settimeout(10)
     conn, _ = srv.accept()

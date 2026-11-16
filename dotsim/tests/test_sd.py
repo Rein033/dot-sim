@@ -7,7 +7,8 @@ import time
 
 import pytest
 
-import server
+import sandbox as sandbox_mod   # the module; 'sandbox' is a fixture here
+import sdcard
 
 
 def b64(data):
@@ -27,50 +28,50 @@ def card(tmp_path):
                                   "bad\nname", "nul\x00", None, 5, "\ud800", "a\ud800b", "\U0001F600" * 64])
 def test_sd_name_traversal_refused(tmp_path, card, name):
     fd, d = card
-    assert server.sd_put(fd, name, b64(b"hi")) is not None      # an error text, never an exception
-    assert server.sd_read(fd, name)[0] is None
+    assert sdcard.sd_put(fd, name, b64(b"hi")) is not None      # an error text, never an exception
+    assert sdcard.sd_read(fd, name)[0] is None
     assert os.listdir(d) == []
     assert os.listdir(tmp_path) == ["sd"]          # nothing written next to the card either
 
 
 def test_sd_name_bytes(card):
     fd, _ = card
-    assert not server.sd_name_ok("\U0001F600" * 64)    # 256 bytes of UTF-8
-    assert server.sd_put(fd, "\U0001F600" * 63, b64(b"x")) is None   # 252 bytes: fits
+    assert not sdcard.sd_name_ok("\U0001F600" * 64)    # 256 bytes of UTF-8
+    assert sdcard.sd_put(fd, "\U0001F600" * 63, b64(b"x")) is None   # 252 bytes: fits
 
 
 def test_sd_put_ls_get(card):
     fd, _ = card
-    assert server.sd_put(fd, "hello.txt", b64(b"hello")) is None
-    assert server.sd_files(fd) == [{"name": "hello.txt", "size": 5}]
-    assert server.sd_read(fd, "hello.txt") == (b"hello", None)
-    assert server.sd_put(fd, "a" * 64, b64(b"x")) is None   # 64 is the longest
+    assert sdcard.sd_put(fd, "hello.txt", b64(b"hello")) is None
+    assert sdcard.sd_files(fd) == [{"name": "hello.txt", "size": 5}]
+    assert sdcard.sd_read(fd, "hello.txt") == (b"hello", None)
+    assert sdcard.sd_put(fd, "a" * 64, b64(b"x")) is None   # 64 is the longest
 
 
 def test_sd_limits(card):
     fd, _ = card
-    assert server.sd_put(fd, "big", b64(b"x" * (700 * 1024 + 1))) is not None
-    assert server.sd_put(fd, "ok", b64(b"x" * (700 * 1024))) is None
+    assert sdcard.sd_put(fd, "big", b64(b"x" * (700 * 1024 + 1))) is not None
+    assert sdcard.sd_put(fd, "ok", b64(b"x" * (700 * 1024))) is None
     for i in range(22):                              # 23 x 700 KB > 16 MB
-        server.sd_put(fd, "f%d" % i, b64(b"x" * (700 * 1024)))
-    assert sum(f["size"] for f in server.sd_files(fd)) <= 16 * 1024 * 1024
-    assert server.sd_put(fd, "ok", b64(b"y" * 10)) is None   # replacing a file frees its size
+        sdcard.sd_put(fd, "f%d" % i, b64(b"x" * (700 * 1024)))
+    assert sum(f["size"] for f in sdcard.sd_files(fd)) <= 16 * 1024 * 1024
+    assert sdcard.sd_put(fd, "ok", b64(b"y" * 10)) is None   # replacing a file frees its size
 
 
 def test_sd_listing_is_capped(card):
     fd, d = card
     for i in range(600):
         (d / ("f%03d" % i)).write_bytes(b"")
-    assert len(server.sd_files(fd)) == server.SD_LIST_MAX
+    assert len(sdcard.sd_files(fd)) == sdcard.SD_LIST_MAX
 
 
 def test_sd_put_error_is_a_message(card, monkeypatch):
     fd, _ = card
     def boom(*a, **k):
         raise OSError(28, "No space left on device")
-    monkeypatch.setattr(server.os, "rename", boom)
-    assert "No space" in server.sd_put(fd, "x", b64(b"x"))
-    assert [f for f in server.sd_files(fd)] == []            # the temp file is gone too
+    monkeypatch.setattr(sdcard.os, "rename", boom)
+    assert "No space" in sdcard.sd_put(fd, "x", b64(b"x"))
+    assert [f for f in sdcard.sd_files(fd)] == []            # the temp file is gone too
 
 
 def test_sd_symlink_from_the_app_is_not_followed(tmp_path, card):
@@ -79,26 +80,26 @@ def test_sd_symlink_from_the_app_is_not_followed(tmp_path, card):
     secret.write_text("no")
     (d / "link").symlink_to(secret)
     (d / "folder").mkdir()
-    assert server.sd_files(fd) == []
-    assert server.sd_read(fd, "link")[0] is None
-    assert server.sd_put(fd, "link", b64(b"x")) is not None
-    assert server.sd_put(fd, "folder", b64(b"x")) is not None
+    assert sdcard.sd_files(fd) == []
+    assert sdcard.sd_read(fd, "link")[0] is None
+    assert sdcard.sd_put(fd, "link", b64(b"x")) is not None
+    assert sdcard.sd_put(fd, "folder", b64(b"x")) is not None
     assert secret.read_text() == "no"
 
 
 def test_sd_folder_swapped_for_a_symlink_stays_on_the_card(tmp_path, card):
     """The directory fd is the card: renaming its folder and putting a link to the host in its place changes nothing."""
     fd, d = card
-    assert server.sd_put(fd, "mine.txt", b64(b"mine")) is None
+    assert sdcard.sd_put(fd, "mine.txt", b64(b"mine")) is None
     host = tmp_path / "host"
     host.mkdir()
     (host / "passwd").write_text("root:x")
     d.rename(tmp_path / "moved")
     d.symlink_to(host)
-    assert server.sd_files(fd) == [{"name": "mine.txt", "size": 4}]
-    assert server.sd_read(fd, "passwd")[0] is None
-    assert server.sd_read(fd, "mine.txt") == (b"mine", None)
-    assert server.sd_put(fd, "new.txt", b64(b"n")) is None
+    assert sdcard.sd_files(fd) == [{"name": "mine.txt", "size": 4}]
+    assert sdcard.sd_read(fd, "passwd")[0] is None
+    assert sdcard.sd_read(fd, "mine.txt") == (b"mine", None)
+    assert sdcard.sd_put(fd, "new.txt", b64(b"n")) is None
     assert sorted(os.listdir(host)) == ["passwd"]            # nothing landed on the host side
     assert (tmp_path / "moved" / "new.txt").exists()
 
@@ -113,8 +114,8 @@ def sandbox():
 
     def run(script):
         cmd = ["bwrap", "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib",
-               "--ro-bind-try", "/lib64", "/lib64", "--ro-bind-try", "/bin", "/bin", *server.DATA_MOUNT_ARGS,
-               *server.SD_MOUNT_ARGS, "--dev", "/dev", "--proc", "/proc", "--unshare-all", "--die-with-parent",
+               "--ro-bind-try", "/lib64", "/lib64", "--ro-bind-try", "/bin", "/bin", *sandbox_mod.DATA_MOUNT_ARGS,
+               *sdcard.SD_MOUNT_ARGS, "--dev", "/dev", "--proc", "/proc", "--unshare-all", "--die-with-parent",
                "--new-session", "sh", "-c", script]
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         procs.append(p)
@@ -129,8 +130,8 @@ def sandbox():
 def card_of(p):
     end = time.time() + 10
     while time.time() < end:
-        kid = server.sd_child_pid(p.pid)
-        fd = server.sd_open(kid) if kid else None
+        kid = sandbox_mod.sd_child_pid(p.pid)
+        fd = sdcard.sd_open(kid) if kid else None
         if fd is not None:
             return fd
         time.sleep(0.1)
@@ -143,12 +144,12 @@ def test_app_writes_past_16mb_are_stopped(sandbox):
     fd = card_of(p)
     try:
         end = time.time() + 10
-        while time.time() < end and not any(f["name"] == "done" for f in server.sd_files(fd)):
+        while time.time() < end and not any(f["name"] == "done" for f in sdcard.sd_files(fd)):
             time.sleep(0.1)
-        total = sum(f["size"] for f in server.sd_files(fd))
-        assert 0 < total <= server.SD_TOTAL_MAX, total
+        total = sum(f["size"] for f in sdcard.sd_files(fd))
+        assert 0 < total <= sdcard.SD_TOTAL_MAX, total
         # the card is full, and the server says so in words
-        assert server.sd_put(fd, "x.txt", b64(b"x" * 1000)) is not None
+        assert sdcard.sd_put(fd, "x.txt", b64(b"x" * 1000)) is not None
     finally:
         os.close(fd)
 
@@ -161,9 +162,9 @@ def test_app_swaps_its_card_for_a_link_to_the_host(sandbox, tmp_path):
     fd = card_of(p)
     try:
         time.sleep(1)
-        names = [f["name"] for f in server.sd_files(fd)]
+        names = [f["name"] for f in sdcard.sd_files(fd)]
         assert "passwd" not in names and "etc" not in names
-        assert server.sd_read(fd, "etc")[0] is None
-        assert server.sd_read(fd, "hostname")[0] is None
+        assert sdcard.sd_read(fd, "etc")[0] is None
+        assert sdcard.sd_read(fd, "hostname")[0] is None
     finally:
         os.close(fd)
