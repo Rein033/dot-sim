@@ -47,7 +47,7 @@ def test_inputs_to_lines():
     assert f(kdwire.TOUCH, struct.pack("<BHH", 0, 10, 20)) == ["t 0 10 20"]
     assert f(kdwire.BATTERY, bytes([77, 1])) == ["p 77 1"]
     m = struct.pack("<10i", 1, 2, 3, 4, 5, 6, 7, 8, 9, -10)
-    assert f(kdwire.MOTION, m) == ["m 1 2 3 4 5 6 7 8 9 -10"]
+    assert f(kdwire.MOTION, m) == ["i 1 2 3 4 5 6 7 8 9 -10"]
     assert f(kdwire.CONSOLE_IN, b"help\nrm\n") == ["c help rm"]
     # short or unknown payloads are ignored, never raise
     assert f(kdwire.TOUCH, b"\0") == []

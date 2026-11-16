@@ -128,7 +128,7 @@ def kd_to_sim_lines(type, payload):
     if type == BATTERY and len(p) >= 2:
         return [f"p {p[0]} {1 if p[1] else 0}"]
     if type == MOTION and len(p) >= 40:
-        return ["m " + " ".join(str(v) for v in struct.unpack("<10i", p[:40]))]
+        return ["i " + " ".join(str(v) for v in struct.unpack("<10i", p[:40]))]
     if type == CONSOLE_IN:
         return ["c " + p.decode(errors="replace").replace("\r", " ").replace("\n", " ").strip()]
     return []
