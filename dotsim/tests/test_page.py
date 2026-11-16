@@ -131,7 +131,7 @@ def test_loads_clean(page):
     assert page.evaluate("DotSim.mode") in ("beginner", "advanced")
     assert page.evaluate("DotSim.engine") == "fast"
     assert "Unofficial. Not made, approved or supported by Kode." in page.inner_text("body")
-    assert page.locator('a[href="https://github.com/Rein033/dot-sim"]').count() >= 1
+    assert page.locator('a[href="https://github.com/Rein033/sim"]').count() >= 1
     assert page.locator('a[href="/docs"]').count() >= 1
     # kode-sim's Spanish is gone from what shows
     assert "Ajustes" not in page.inner_text("#settings")

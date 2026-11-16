@@ -28,6 +28,6 @@ window.DOTSIM_THEME = {
   docs: '/docs',
   legal: {
     text: 'Unofficial. Not made, approved or supported by Kode.',
-    source: 'https://github.com/Rein033/dot-sim',
+    source: 'https://github.com/Rein033/sim',
   },
 };
