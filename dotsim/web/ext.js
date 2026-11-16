@@ -69,19 +69,31 @@
 
   // sim.js's socket, with the app to run on it.
   const NativeWebSocket = window.WebSocket;
+  // Only the newest one lives: any socket it supersedes is dropped, so no
+  // stray session keeps a sim (and a server slot) running.
+  const live = new Set();
   class AppSocket extends NativeWebSocket {
     constructor(url, protocols) {
       const u = new URL(url, location.href);
       u.searchParams.set('app', DS.app || '');
       super(u.href, protocols);
+      for (const old of live) drop(old);
+      live.clear();
+      live.add(this);
+      this.addEventListener('close', () => live.delete(this));
     }
   }
   window.WebSocket = AppSocket;
 
   const sim = { connect: window.connect, onFrame: window.onFrame, onJson: window.onJson, setState: window.setState };
 
-  // Only with an app chosen: on the home screen there is nothing to connect to.
-  window.connect = () => { if (DS.app && !ending) sim.connect(); };
+  // Only with an app chosen (on the home screen there is nothing to connect to),
+  // and never next to a socket that is open or opening: sim.js's onclose sets a
+  // reconnect timer, and DS.start may have connected again before it fires.
+  window.connect = () => {
+    if (!DS.app || ending || (ws && ws.readyState <= 1)) return;
+    sim.connect();
+  };
 
   window.onFrame = (type, buf, off, len) => {
     if (type === FB_JPEG) jpeg(buf, off, len);

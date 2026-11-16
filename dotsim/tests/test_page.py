@@ -100,6 +100,25 @@ def lit_pixels(pg):
     }""")
 
 
+def dash_pixels(pg):
+    """Pixels in Dash's own fur (#E8A15A) and collar (#028AC2) where he stands on the face."""
+    return pg.evaluate("""() => {
+        const d = document.getElementById('screen').getContext('2d').getImageData(130, 300, 150, 150).data;
+        const near = (i, r, g, b) => Math.abs(d[i] - r) < 40 && Math.abs(d[i + 1] - g) < 40 && Math.abs(d[i + 2] - b) < 50;
+        let fur = 0, collar = 0;
+        for (let i = 0; i < d.length; i += 4) {
+            if (near(i, 0xE8, 0xA1, 0x5A)) fur++;
+            else if (near(i, 0x02, 0x8A, 0xC2)) collar++;
+        }
+        return [fur, collar];
+    }""")
+
+
+def server_sessions(url):
+    with urllib.request.urlopen(url + "api/status") as r:
+        return json.loads(r.read())["sessions"]
+
+
 def press(pg, name):
     el = pg.locator(f'[data-btn="{name}"]')
     el.dispatch_event("pointerdown", {"pointerId": 1, "isPrimary": True})
@@ -122,7 +141,8 @@ def test_loads_clean(page):
 def test_home_then_grid(page):
     page.wait_for_function("DotSim.view === 'face'")
     page.wait_for_timeout(300)
-    assert lit_pixels(page) > 20, "Dash's face is not on the glass"
+    fur, collar = dash_pixels(page)
+    assert fur > 500 and collar > 20, "Dash is not on the glass (fur %d, collar %d)" % (fur, collar)
     press(page, "top")
     page.wait_for_function("DotSim.view === 'grid'", timeout=3000)
     page.wait_for_function("DotSim.apps.some((a) => a.id === 'slang')", timeout=5000)
@@ -170,3 +190,48 @@ def test_public_paths(server):
                  "dotsim/theme/theme.js", "dotsim/theme/theme.css", "dotsim/theme/dash.js", "docs"):
         with urllib.request.urlopen(URL + path) as r:
             assert r.status == 200, path
+
+
+def test_restart_in_reconnect_window_keeps_one_socket(page, server):
+    """sim.js's onclose sets a 1 s reconnect timer; a start inside that second must not leave two sessions."""
+    page.evaluate("DotSim.start('slang')")
+    page.wait_for_function("DotSim.running", timeout=20000)
+    # closed, and seen by sim.js's own onclose: its 1 s reconnect timer is now set
+    page.evaluate("""() => new Promise((done) => {
+        const s = ws, simClose = s.onclose;
+        s.onclose = (e) => { simClose(e); done(); };
+        s.close();
+    })""")
+    page.evaluate("DotSim.start('slang')")   # and a restart before it fires
+    page.wait_for_timeout(1500)              # the timer has fired by now
+    page.wait_for_function("DotSim.running", timeout=20000)
+    page.wait_for_timeout(1500)              # the closed session has gone from the server
+    assert server_sessions(server) == 1
+    page.evaluate("DotSim.home()")
+    end = time.time() + 10
+    while server_sessions(server) and time.time() < end:
+        time.sleep(0.2)
+    assert server_sessions(server) == 0
+
+
+def test_lost_build_ends_the_poll(page):
+    """A job the server no longer knows (404, after a restart) fails the build instead of polling forever."""
+    page.route("**/api/play", lambda route: route.fulfill(
+        status=200, content_type="application/json", body=json.dumps({"job": "gone", "app": "g_gone"})))
+    page.wait_for_function("DotSim.editor", timeout=20000)
+    page.errors.clear()
+    page.click("#ds-play")
+    page.wait_for_function("!document.getElementById('ds-play').disabled", timeout=8000)
+    assert "no longer knows this build" in page.inner_text("#dotsim-status")
+    assert not page.evaluate("DotSim.app")
+    # the 404 itself is the only console line expected
+    assert all("404" in e for e in page.errors), page.errors
+
+
+def test_server_error_stays_visible(page):
+    """An app the server refuses: the reason stays on the status line and on the glass."""
+    page.evaluate("DotSim.start('nope')")
+    page.wait_for_function("DotSim.app === null", timeout=10000)
+    page.wait_for_timeout(1500)
+    assert "Error:" in page.inner_text("#dotsim-status")
+    assert page.evaluate("DotSim.view") == "face"

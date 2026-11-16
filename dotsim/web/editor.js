@@ -89,14 +89,14 @@
     if (playBtn.disabled || !cm) return;
     showTab(false);
     playBtn.disabled = true; clearMarks();
-    DS.status('Building your code…');
+    DS.status('Building your code…', 0);
     DS.log('— building your code');
     let r;
     try {
       r = await (await fetch('/api/play', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                            body: JSON.stringify({ base, code: mainDoc.getValue() }) })).json();
     } catch (e) { r = { error: 'server not reachable' }; }
-    if (r.error) { DS.log('error: ' + r.error); DS.status('Error: ' + esc(r.error)); playBtn.disabled = false; return; }
+    if (r.error) { DS.log('error: ' + r.error); DS.status('Error: ' + esc(r.error), 8000); playBtn.disabled = false; return; }
     const name = (/KODE_APP_MANIFEST\(\s*"([^"]+)"/.exec(mainDoc.getValue()) || [, 'your app'])[1];
     if (r.job) {
       const all = [];
@@ -104,7 +104,8 @@
       markProblems(all);
       if (j.state !== 'done') {
         playBtn.disabled = false;
-        DS.status(probs.children.length ? 'Your code has errors: see the red lines.' : 'Build failed, see the console.');
+        DS.status(j.lost ? esc(j.lost) : probs.children.length ? 'Your code has errors: see the red lines.'
+          : 'Build failed, see the console.', 8000);   // held: the home screen's status would replace it
         return;
       }
     } else {

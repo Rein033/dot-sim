@@ -9,7 +9,8 @@
   const FONT = T.font.family + ', system-ui, sans-serif';
   const PALETTE = ['#028AC2', '#46BE5A', '#F58228', '#9658DC', '#C9303D', '#3CC8DC', '#FAC828', '#F06EAA'];
   const L = { sel: 0, per: 9, down: null, last: performance.now(), wakeAt: 0, look: null, lookAt: 0,
-              note: null, noteAt: 0, min: -1, clockAt: -1e9 };
+              note: null, noteAt: 0, min: -1, clockAt: -1e9, err: null, errAt: -1e9 };
+  const ERR_MS = 8000;
   const COLS = 3, TW = 92, TH = 92, GX = 22, X0 = (410 - (3 * 92 + 2 * 22)) / 2, Y0 = 96, RH = 120;
   const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
@@ -52,7 +53,17 @@
     Dash.draw(ctx, { x: 205, y: 448, s: 1.0, t, mood: m, time: hhmm(now), note: L.note,
                      look: (t - L.lookAt < 2500) ? L.look : null });
     ctx.restore();
-    if (!dim && t - L.last < 8000) {
+    if (L.err && t - L.errAt < ERR_MS) {
+      // what the server said (too many sims, needs a login...), wrapped, above Dash
+      ctx.fillStyle = '#F19B96'; ctx.font = '600 16px ' + FONT;
+      const words = L.err.split(' ');
+      let line = '', y = 196;
+      for (const w of words) {
+        if (line && ctx.measureText(line + ' ' + w).width > 300) { ctx.fillText(line, 205, y); y += 21; line = w; }
+        else line = line ? line + ' ' + w : w;
+      }
+      if (line) ctx.fillText(line, 205, y);
+    } else if (!dim && t - L.last < 8000) {
       ctx.fillStyle = 'rgba(232,232,232,.55)'; ctx.font = '13px ' + FONT;
       ctx.fillText('TOP or tap for apps', 205, 186);
     }
@@ -174,7 +185,15 @@
   });
 
   DS.listen('look', (x, y) => { L.look = { x, y }; L.lookAt = performance.now(); });
-  DS.listen('home', (was) => { L.last = performance.now(); DS.view = was ? 'grid' : 'face'; draw(); });
+  // After an error the face shows it (the grid would hide it); otherwise back in the grid.
+  DS.listen('error', (s) => { L.err = String(s); L.errAt = performance.now(); });
+  DS.listen('app', () => { L.err = null; L.errAt = -1e9; });
+  DS.listen('home', (was) => {
+    const t = performance.now();
+    L.last = t;
+    DS.view = was && t - L.errAt > ERR_MS ? 'grid' : 'face';
+    draw();
+  });
   DS.listen('apps', (apps) => {
     for (const a of apps) {
       if (a.icon && !a.img) { a.img = new Image(); a.img.onload = draw; a.img.src = '/api/icon/' + a.id; }

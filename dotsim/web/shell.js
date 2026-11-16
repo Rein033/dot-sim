@@ -58,15 +58,23 @@
     'swipe or <kbd>←</kbd>/<kbd>→</kbd> for more. Hold TOP and BOT for a second (or <kbd>Esc</kbd>) to go back home.</div>';
   document.getElementById('stage').after(aside);
   const statusEl = document.getElementById('dotsim-status');
-  DS.status = (html) => { if (statusEl.innerHTML !== html) statusEl.innerHTML = html; };
+  // An error stays up a while (hold, in ms): the home screen's own status would replace it
+  // at once. hold 0 is something the user just did (start, build): it shows and ends a hold.
+  let holdUntil = 0;
+  DS.status = (html, hold) => {
+    const now = performance.now();
+    if (hold !== undefined) holdUntil = now + hold;
+    else if (now < holdUntil) return;
+    if (statusEl.innerHTML !== html) statusEl.innerHTML = html;
+  };
   document.getElementById('ds-home').addEventListener('click', () => DS.home());
   const restart = document.getElementById('ds-restart');
   restart.addEventListener('click', () => DS.restart());
-  DS.listen('app', () => { restart.disabled = false; DS.status('Starting <b>' + esc(DS.label) + '</b>…'); });
+  DS.listen('app', () => { restart.disabled = false; DS.status('Starting <b>' + esc(DS.label) + '</b>…', 0); });
   DS.listen('home', () => { restart.disabled = true; });
   DS.listen('running', () => DS.status('Running: <b>' + esc(DS.label) + '</b>'));
   DS.listen('fps', (fps) => { if (DS.running) DS.status('Running: <b>' + esc(DS.label) + '</b> · ' + fps + ' fps'); });
-  DS.listen('error', (s) => DS.status('Error: ' + esc(s)));
+  DS.listen('error', (s) => DS.status('<b>Error:</b> ' + esc(s), 8000));
 
   // ---- footer ----
   const foot = document.createElement('footer');
@@ -88,31 +96,41 @@
     const repo = gitIn.value.trim();
     if (!repo) return;
     buildBtn.disabled = true;
-    DS.status('Building…');
+    DS.status('Building…', 0);
     DS.log('— building: ' + repo);
     let r;
     try {
       r = await (await fetch('/api/build', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ repo }) })).json();
     } catch (e) { r = { error: 'server not reachable' }; }
-    if (r.error) { DS.log('error: ' + r.error); DS.status('Error: ' + esc(r.error)); buildBtn.disabled = false; return; }
+    if (r.error) { DS.log('error: ' + r.error); DS.status('Error: ' + esc(r.error), 8000); buildBtn.disabled = false; return; }
     const j = await DS.follow(r.job, (st) => DS.status('Build: ' + st + '…'));
     buildBtn.disabled = false;
     if (j.state === 'done') { await DS.loadApps(); DS.log('— built ' + j.app); DS.start(j.app); }
-    else DS.status('Build failed, see the console.');
+    else DS.status(j.lost ? esc(j.lost) : 'Build failed, see the console.', 8000);
   }
   buildBtn.addEventListener('click', build);
   gitIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') build(); });
 
   // A build job's lines to the console until it is done; onState('waiting'|'building') meanwhile.
+  // A job the server no longer knows (it restarted) or a server gone for good ends it as
+  // { state: 'failed', lost: <why> }.
+  const FOLLOW_TRIES = 10;
   DS.follow = async (job, onState, lines) => {
-    let next = 0;
+    let next = 0, fails = 0;
+    const lost = (why) => { DS.log('— ' + why); return { state: 'failed', lost: why, lines: [] }; };
     for (;;) {
       await new Promise((res) => setTimeout(res, 1000));
-      let j;
-      try { j = await (await fetch('/api/build/' + job + '?since=' + next)).json(); } catch (e) { continue; }
-      for (const line of j.lines) { DS.log(line); if (lines) lines.push(line); }
-      next = j.next;
+      let r, j;
+      try { r = await fetch('/api/build/' + encodeURIComponent(job) + '?since=' + next); } catch (e) {
+        if (++fails >= FOLLOW_TRIES) return lost('The server stopped answering; the build is lost. Try again.');
+        continue;
+      }
+      if (!r.ok) return lost('The server no longer knows this build (it may have restarted). Try again.');
+      try { j = await r.json(); } catch (e) { return lost('The server sent something odd about this build. Try again.'); }
+      fails = 0;
+      for (const line of j.lines || []) { DS.log(line); if (lines) lines.push(line); }
+      if (typeof j.next === 'number') next = j.next;
       if (j.state === 'building' || j.state === 'waiting') { onState(j.state); continue; }
       return j;
     }
