@@ -37,6 +37,7 @@ import hashlib
 import uuid
 import struct
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -323,11 +324,16 @@ def _tree_copy(src_fd, dest, state, depth, skip=()):
     if depth > SAVE_MAX_DEPTH:
         raise TreeTooBig("too deep")
     dest.mkdir(exist_ok=True)
-    for name in os.listdir(src_fd):
-        if name in skip or name in (".", ".."):
+    seen = 0
+    for entry in os.scandir(src_fd):
+        name = entry.name
+        seen += 1
+        if seen > SAVE_MAX_FILES + len(skip):      # stop reading a huge folder at the cap
+            raise TreeTooBig("more than %d files" % SAVE_MAX_FILES)
+        if name in skip:
             continue
         try:
-            st = os.stat(name, dir_fd=src_fd, follow_symlinks=False)
+            st = entry.stat(follow_symlinks=False)
         except OSError:
             continue
         if stat.S_ISDIR(st.st_mode):
@@ -373,21 +379,24 @@ def tree_copy(src_fd, dest, skip=()):
 
 
 def data_seed(saved, dest):
-    """Stage the app's saved data into @p dest for the new sandbox. Empty (and logged) if it is unusable."""
+    """Stage the app's saved data into @p dest for the new sandbox. Returns False (empty data, logged) if
+    the saved data is unusable; the caller must then not overwrite it at the end."""
     dest = Path(dest)
     dest.mkdir(exist_ok=True)
     try:
         fd = os.open(saved, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except OSError:
-        return
+        return True
     try:
         tree_copy(fd, dest, skip=("sd",))
     except (TreeTooBig, OSError) as e:
-        log.warning("data: saved data of %s not loaded: %s", saved, e)
+        log.warning("data: saved data of %s not loaded, it will not be replaced either: %s", saved, e)
         shutil.rmtree(dest, ignore_errors=True)
         dest.mkdir()
+        return False
     finally:
         os.close(fd)
+    return True
 
 
 def data_open(pid):
@@ -398,29 +407,36 @@ def data_open(pid):
         return None
 
 
+_save_locks = {}
+_save_locks_guard = threading.Lock()
+
+
 def data_save(fd, saved):
-    """Copy the sandbox's /data (not the card) over the saved data; keep the old one and log why if it is too big."""
+    """Copy the sandbox's /data (not the card) over the saved data; keep the old one and log why if it is too big.
+    One save per app at a time (the last to get the lock wins); each uses its own staging folder."""
     saved = Path(saved)
-    new = saved.with_name(saved.name + ".new")
-    old = saved.with_name(saved.name + ".old")
-    shutil.rmtree(new, ignore_errors=True)
-    try:
-        tree_copy(fd, new, skip=("sd",))
-    except (TreeTooBig, OSError) as e:
-        log.warning("data: not saved for %s, the old data stays: %s", saved.name, e)
-        shutil.rmtree(new, ignore_errors=True)
-        return False
-    shutil.rmtree(old, ignore_errors=True)
-    try:
-        if saved.exists():
-            saved.rename(old)
-        new.rename(saved)
-    except OSError as e:
-        log.warning("data: not saved for %s: %s", saved.name, e)
-        return False
-    finally:
-        shutil.rmtree(old, ignore_errors=True)
-    return True
+    with _save_locks_guard:
+        lock = _save_locks.setdefault(saved.name, threading.Lock())
+    with lock:
+        new = Path(tempfile.mkdtemp(dir=saved.parent, prefix=saved.name + ".new-"))
+        try:
+            tree_copy(fd, new, skip=("sd",))
+        except (TreeTooBig, OSError) as e:
+            log.warning("data: not saved for %s, the old data stays: %s", saved.name, e)
+            shutil.rmtree(new, ignore_errors=True)
+            return False
+        old = Path(tempfile.mkdtemp(dir=saved.parent, prefix=saved.name + ".old-"))
+        try:
+            if saved.exists():
+                saved.rename(old / "x")
+            new.rename(saved)
+        except OSError as e:
+            log.warning("data: not saved for %s: %s", saved.name, e)
+            shutil.rmtree(new, ignore_errors=True)
+            return False
+        finally:
+            shutil.rmtree(old, ignore_errors=True)
+        return True
 
 
 def sim_cmd(elf, run_dir, seed):
@@ -431,7 +447,7 @@ def sim_cmd(elf, run_dir, seed):
         "--ro-bind-try", "/bin", "/bin",
         "--ro-bind", "/etc/ld.so.cache", "/etc/ld.so.cache",
         "--ro-bind", str(elf), "/app.elf",
-        "--bind", str(run_dir), "/run/sim",
+        "--ro-bind", str(run_dir), "/run/sim",    # the app may connect to the socket, not write
         "--ro-bind", str(seed), "/seed",
         *DATA_MOUNT_ARGS,
         *SD_MOUNT_ARGS,
@@ -465,6 +481,8 @@ class Session:
         self.buttons = 0
         self.sd_fd = None          # the card's directory, once the sim has started (sd_open)
         self.sd_lock = asyncio.Lock()
+        self.kid = None
+        self.seed_ok = True        # False: the saved data was too big to load, so it is not replaced
         self.data_fd = None        # the sandbox's /data, for the copy-back at the end
 
     @property
@@ -548,7 +566,7 @@ class Session:
         server = await asyncio.start_unix_server(on_conn, path=str(sock_path))
         os.chmod(sock_path, 0o777)
         seed = self.tmp / "seed"
-        await asyncio.get_running_loop().run_in_executor(None, data_seed, data, seed)
+        self.seed_ok = await asyncio.get_running_loop().run_in_executor(None, data_seed, data, seed)
         cmd = sim_cmd(elf, self.tmp, seed)
         self.proc = await asyncio.create_subprocess_exec(
             "prlimit", "--as=1500000000", "--cpu=3600", "--", *cmd,
@@ -569,7 +587,7 @@ class Session:
         finally:
             server.close()
         # The card, as a directory fd that stays this one directory whatever the app does to its files.
-        kid = sd_child_pid(self.proc.pid)
+        kid = self.kid = sd_child_pid(self.proc.pid)
         self.sd_fd = sd_open(kid) if kid else None
         if self.sd_fd is None:
             log.warning("sd: no access to the card of pid %s", self.proc.pid)
@@ -732,14 +750,6 @@ class Session:
             except OSError:
                 pass
             self.sd_fd = None
-        if self.data_fd is not None:
-            fd, self.data_fd = self.data_fd, None
-            try:
-                await asyncio.get_running_loop().run_in_executor(None, data_save, fd, DATA / self.app_id)
-            except Exception:
-                log.exception("data: copy-back failed")
-            finally:
-                os.close(fd)
         if self.sender:
             await self.sender.stop()
         self.frame_evt.set()
@@ -748,6 +758,11 @@ class Session:
                 self.send_line("q")
                 self.writer.close()
             except Exception:
+                pass
+        if self.kid:     # the sandbox's init: killing it ends every process in the sandbox at once
+            try:
+                os.kill(self.kid, 9)
+            except OSError:
                 pass
         if self.proc and self.proc.returncode is None:
             try:
@@ -758,6 +773,16 @@ class Session:
                 await asyncio.wait_for(self.proc.wait(), 3)
             except asyncio.TimeoutError:
                 pass
+        # the app is dead now, so the copy cannot catch a half-written file
+        if self.data_fd is not None:
+            fd, self.data_fd = self.data_fd, None
+            try:
+                if self.seed_ok:
+                    await asyncio.get_running_loop().run_in_executor(None, data_save, fd, DATA / self.app_id)
+            except Exception:
+                log.exception("data: copy-back failed")
+            finally:
+                os.close(fd)
         if self.tmp:
             shutil.rmtree(self.tmp, ignore_errors=True)
 

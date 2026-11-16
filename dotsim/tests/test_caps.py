@@ -183,3 +183,87 @@ def test_saved_data_too_big_starts_empty(tmp_path):
     seed = tmp_path / "seed"
     server.data_seed(saved, seed)
     assert os.listdir(seed) == []
+
+
+def test_concurrent_saves_leave_one_complete_tree(tmp_path):
+    import threading
+    saved = tmp_path / "saved"
+    saved.mkdir()
+    (saved / "old").write_text("old")
+    srcs = []
+    for i in range(6):
+        d = tmp_path / ("src%d" % i)
+        d.mkdir()
+        for j in range(20):
+            (d / ("f%d_%d" % (i, j))).write_bytes(b"x" * 1000)
+        srcs.append(os.open(d, os.O_RDONLY | os.O_DIRECTORY))
+    res = []
+    ts = [threading.Thread(target=lambda fd=fd: res.append(server.data_save(fd, saved))) for fd in srcs]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    [os.close(fd) for fd in srcs]
+    assert res == [True] * 6
+    names = os.listdir(saved)
+    assert len(names) == 20 and len({n.split("_")[0] for n in names}) == 1   # exactly one session's tree
+    assert sorted(os.listdir(tmp_path)) == sorted(["saved"] + ["src%d" % i for i in range(6)])   # no staging left
+
+
+def test_a_data_dir_with_100k_files_is_refused_quickly(tmp_path):
+    d = tmp_path / "many"
+    d.mkdir()
+    for i in range(100000):
+        os.close(os.open(d / ("f%d" % i), os.O_CREAT | os.O_WRONLY))
+    fd = os.open(d, os.O_RDONLY | os.O_DIRECTORY)
+    saved = tmp_path / "saved"
+    saved.mkdir()
+    (saved / "keep").write_text("1")
+    t = time.time()
+    assert server.data_save(fd, saved) is False
+    os.close(fd)
+    assert time.time() - t < 1.0
+    assert os.listdir(saved) == ["keep"]
+
+
+def test_rejected_seed_is_reported_so_the_old_data_is_not_replaced(tmp_path):
+    saved = tmp_path / "saved"
+    saved.mkdir()
+    for i in range(server.SAVE_MAX_FILES + 5):
+        (saved / ("f%d" % i)).write_text("")
+    assert server.data_seed(saved, tmp_path / "seed") is False
+    assert os.listdir(tmp_path / "seed") == []
+    assert len(os.listdir(saved)) == server.SAVE_MAX_FILES + 5       # untouched
+    (tmp_path / "ok").mkdir()
+    assert server.data_seed(tmp_path / "ok", tmp_path / "seed2") is True
+    assert server.data_seed(tmp_path / "missing", tmp_path / "seed3") is True
+
+
+@needs_bwrap
+def test_the_app_cannot_write_into_run_sim(sims):
+    s = sims("dd if=/dev/zero of=/run/sim/big bs=1M count=50 2>/dev/null; echo $? > /data/sd/res; "
+             "ls /run/sim > /data/sd/ls; touch /data/sd/done")
+    s.wait_done()
+    assert s.res().strip() != "0"
+    assert "big" not in s.res("ls")
+    assert os.listdir(s.dir / "run") == []
+
+
+@needs_bwrap
+def test_the_sim_socket_still_connects_through_the_read_only_run_dir(sims, tmp_path):
+    import socket
+    s = sims("sleep 0", name="x")      # only to get the dir layout; the socket is made below
+    s.close()
+    run = tmp_path / "run2"
+    run.mkdir()
+    srv = socket.socket(socket.AF_UNIX)
+    srv.bind(str(run / "sim.sock"))
+    os.chmod(run / "sim.sock", 0o777)
+    srv.listen(1)
+    elf = tmp_path / "c.sh"
+    elf.write_text("#!/bin/sh\nexec python3 -c \"import socket;c=socket.socket(socket.AF_UNIX);c.connect('/run/sim/sim.sock')\"\n")
+    elf.chmod(0o755)
+    (tmp_path / "seed9").mkdir()
+    cmd = server.sim_cmd(elf, run, tmp_path / "seed9")
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    srv.settimeout(10)
+    conn, _ = srv.accept()
+    p.wait()
