@@ -192,6 +192,51 @@ def test_public_paths(server):
             assert r.status == 200, path
 
 
+FIT = """() => {
+    const g = document.getElementById('glass').getBoundingClientRect();
+    const t = document.getElementById('dotsim-top').getBoundingClientRect();
+    const m = /scale\\(([\\d.]+)\\)/.exec(document.getElementById('device').style.transform);
+    return { sw: document.documentElement.scrollWidth, iw: innerWidth, left: g.left, right: g.right,
+             scale: m ? Number(m[1]) : null, header: t.height };
+}"""
+
+
+@pytest.mark.parametrize("width", [360, 390, 430])
+def test_phone_fits(server, browser, width):
+    """On a phone the Dot is scaled to the screen: no sideways scroll, the whole glass in view, a short header."""
+    ctx = browser.new_context(viewport={"width": width, "height": 844}, is_mobile=True, has_touch=True,
+                              device_scale_factor=3)
+    pg = ctx.new_page()
+    pg.goto(server)
+    # the editor's code (long lines) is in: that is what pushed the page wide
+    pg.wait_for_function("DotSim.ready && DotSim.editor && DotSim.editor.lineCount() > 5", timeout=20000)
+    pg.wait_for_timeout(500)
+    f = pg.evaluate(FIT)
+    ctx.close()
+    assert f["sw"] <= width and f["iw"] == width, f
+    assert f["left"] >= 0 and f["right"] <= width, f
+    assert f["header"] < 120, f   # two rows at most
+
+
+def test_desktop_not_above_one(server, browser):
+    ctx = browser.new_context(viewport={"width": 1500, "height": 950})
+    pg = ctx.new_page()
+    pg.goto(server)
+    pg.wait_for_function("DotSim.ready", timeout=15000)
+    pg.wait_for_timeout(300)
+    f = pg.evaluate(FIT)
+    big = browser.new_context(viewport={"width": 2400, "height": 1600})
+    pg2 = big.new_page()
+    pg2.goto(server)
+    pg2.wait_for_function("DotSim.ready", timeout=15000)
+    pg2.wait_for_timeout(300)
+    g = pg2.evaluate(FIT)
+    ctx.close()
+    big.close()
+    assert f["sw"] <= 1500 and 0 < f["scale"] <= 1, f
+    assert 0 < g["scale"] <= 1, g
+
+
 def test_restart_in_reconnect_window_keeps_one_socket(page, server):
     """sim.js's onclose sets a 1 s reconnect timer; a start inside that second must not leave two sessions."""
     page.evaluate("DotSim.start('slang')")

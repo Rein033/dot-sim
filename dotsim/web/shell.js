@@ -23,6 +23,7 @@
   top.id = 'dotsim-top';
   top.innerHTML = '<canvas id="ds-logo" width="80" height="88" title="' + esc(T.mascot) + '"></canvas>' +
     '<a class="brand" href="/">' + esc(T.name) + '</a><span class="pill">Unofficial</span><span class="sp"></span>' +
+    '<span class="ds-break"></span>' +
     '<span class="ds-modes" role="group" aria-label="Mode">' +
     '<button data-mode="beginner" title="The apps, the code and the battery">Beginner</button>' +
     '<button data-mode="advanced" title="Also motion and the console">Advanced</button></span>' +
