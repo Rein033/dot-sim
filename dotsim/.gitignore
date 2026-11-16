@@ -1,0 +1,8 @@
+# a link to your kode-sdk checkout (see README)
+hostsim/sdk
+# made by apps/assemble.py
+apps/*/
+!apps/src/
+!apps/kodekit/
+!apps/icons/
+__pycache__/

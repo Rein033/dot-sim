@@ -1,0 +1,37 @@
+# Dot Sim behind Caddy, with an optional forward-auth login (Authelia, Authentik, ...).
+# Everyone: play, edit and build code in the browser. Logged in: also build from Git.
+# The proxy strips any Remote-* header a visitor sends; only the auth server sets them.
+
+sim.example.org {
+	@public {
+		path / /docs /api/status /api/icon/* /api/sources /api/source/* /api/play /api/build/* /ws /static/*
+	}
+	handle @public {
+		# Ask the auth server; a logged-in user gets Remote-User, a guest goes on without it.
+		reverse_proxy 127.0.0.1:9091 {
+			method GET
+			rewrite /api/authz/forward-auth
+			header_up X-Forwarded-Method {method}
+			header_up X-Forwarded-Uri {uri}
+			@ok status 2xx
+			handle_response @ok {
+				request_header Remote-User {rp.header.Remote-User}
+				reverse_proxy 127.0.0.1:8000
+			}
+			handle_response {
+				request_header -Remote-User
+				request_header -Remote-Groups
+				request_header -Remote-Email
+				request_header -Remote-Name
+				reverse_proxy 127.0.0.1:8000
+			}
+		}
+	}
+	handle {
+		forward_auth 127.0.0.1:9091 {
+			uri /api/authz/forward-auth
+			copy_headers Remote-User Remote-Groups
+		}
+		reverse_proxy 127.0.0.1:8000
+	}
+}

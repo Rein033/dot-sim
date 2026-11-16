@@ -1,3 +1,14 @@
+> **dot-sim** is an unofficial fork of [kodediy/kode-sim](https://github.com/kodediy/kode-sim).
+> Everything below this box is kode-sim's own README, unchanged. This fork adds
+> [`dotsim/`](dotsim/README.md): a Kode Dot that runs in the browser, served from one Linux
+> machine, with a home screen, a mascot of its own (Dash, the dog), a code editor that builds
+> and runs your C in seconds, and ten small apps with pixel-art icons.
+>
+> dot-sim is not made, approved or supported by Kode. Kode, Kode Dot, kodeOS and Kody are
+> trademarks of Kode ([TRADEMARKS.md](https://github.com/kodediy/.github/blob/main/TRADEMARKS.md)).
+> The pictures of the Kode Dot (`web/kode-dot.png`, `dotsim/web/kode-dot.png`) and of Kody
+> in `.github/img/` are Kode's; see [NOTICE.md](NOTICE.md).
+
 <div align="center" markdown="1">
 
 <img src=".github/img/kode-dot.png" alt="The Kode Dot" width="200">

@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Dot Sim docs</title>
+<link rel="icon" href="/static/kode-dot.png">
+<style>
+  :root {
+    --bg: #DED7CD; --card: rgba(255,255,255,.92); --line: #C2BAB0; --text: #191919;
+    --muted: #6E6A64; --muted2: #4A4742; --yellow: #FFAC00; --blue: #028AC2; --dark: #191919; --on-dark: #E8E8E8; --soft: rgba(0,0,0,.08);
+  }
+  html, body, * { touch-action: manipulation; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 20px; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 18px/1.65 Outfit, system-ui, sans-serif; }
+  header.top { display: flex; align-items: center; gap: 14px; padding: 22px 36px; flex-wrap: wrap; }
+  .brand { font: 800 30px/1 Outfit, system-ui, sans-serif; letter-spacing: -.5px; color: var(--text); text-decoration: none; }
+  .pill { font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 99px; background: var(--soft); color: var(--muted2); }
+  header.top .sp { flex: 1; }
+  .btn { background: var(--blue); color: #fff; border-radius: 10px; padding: 9px 18px; font-weight: 600; font-size: 16px; text-decoration: none; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .wrap { display: grid; grid-template-columns: 290px minmax(0, 760px); gap: 54px; padding: 8px 36px 80px; justify-content: start; }
+  nav.side { position: sticky; top: 20px; align-self: start; display: flex; flex-direction: column; gap: 2px; }
+  nav.side .t { font-size: 26px; font-weight: 700; margin: 4px 11px 10px; }
+  nav.side a { color: var(--text); text-decoration: none; padding: 5px 11px; border-radius: 8px; font-size: 17px; }
+  nav.side a:hover { background: var(--soft); }
+  nav.side a.on { background: var(--yellow); }
+  .crumb { color: var(--muted2); font-size: 16px; margin: 0 0 6px; }
+  h1 { font-size: 63px; line-height: 1.05; font-weight: 700; margin: 0 0 18px; letter-spacing: -1.5px; }
+  h2 { font-size: 29px; font-weight: 600; margin: 52px 0 12px; }
+  h3 { font-size: 21px; font-weight: 600; margin: 28px 0 8px; }
+  .lead { color: var(--muted); font-size: 20px; margin: 0 0 8px; }
+  a { color: var(--text); text-decoration-color: var(--blue); text-underline-offset: 3px; }
+  table { width: 100%; border-collapse: collapse; font-size: 16px; margin: 10px 0; background: var(--card); border-radius: 12px; border: 1px solid var(--line); border-collapse: separate; border-spacing: 0; overflow: hidden; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  th { color: var(--muted2); font-weight: 600; }
+  code, pre, kbd { font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  code { color: var(--text); }
+  pre { background: var(--dark); border-radius: 12px; padding: 16px 18px; overflow-x: auto; color: var(--on-dark); }
+  pre code { color: inherit; }
+  kbd { background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--yellow); border-radius: 12px; padding: 14px 18px; margin: 16px 0; }
+  ul, ol { padding-left: 24px; } li { margin: 4px 0; }
+  .fine { color: var(--muted); font-size: 14px; margin-top: 56px; border-top: 1px solid var(--line); padding-top: 16px; }
+  @media (max-width: 900px) {
+    header.top { padding: 16px; } .wrap { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 0 16px 60px; }
+    nav.side { position: static; flex-direction: row; flex-wrap: wrap; } nav.side .t { display: none; }
+    h1 { font-size: 44px; }
+    table { display: block; overflow-x: auto; }
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<header class="top">
+  <canvas id="logo" width="96" height="104" style="width:48px;height:52px"></canvas><a class="brand" href="/">dot sim</a><span class="pill">Unofficial</span>
+  <span class="sp"></span>
+  <a class="btn" href="/">Open the sim</a>
+</header>
+<div class="wrap">
+<nav class="side">
+  <div class="t">Docs</div>
+  <a href="#top">Overview</a><a href="#controls">Controls</a><a href="#editor">Editing code</a><a href="#app">How an app works</a><a href="#api">kodekit API</a><a href="#examples">Examples</a><a href="#limits">Limits</a>
+</nav>
+<main>
+  <p class="crumb" id="top">Dot Sim</p>
+
+  <h1>Overview</h1>
+  <p class="lead">An unofficial <a href="https://kode.diy">Kode Dot</a> simulator in your browser. Play the apps, open their code, change it, and run your version a few seconds later. Nothing to install.</p>
+  <p>The sim runs the real kode-sdk, built for Linux instead of the ESP32-P4. Your code is compiled on the server in a sandbox and runs there too; the browser only shows the screen and sends the buttons and touches.</p>
+
+  <h2 id="controls">Controls</h2>
+  <table>
+    <tr><th>Kode Dot</th><th>Keyboard</th><th>Mouse / touch</th></tr>
+    <tr><td>D-pad</td><td><kbd>&larr;</kbd> <kbd>&uarr;</kbd> <kbd>&rarr;</kbd> <kbd>&darr;</kbd></td><td>the d-pad on the picture</td></tr>
+    <tr><td>TOP (blue)</td><td><kbd>Z</kbd></td><td>the blue button</td></tr>
+    <tr><td>BOT (red)</td><td><kbd>X</kbd></td><td>the red button</td></tr>
+    <tr><td>Touch screen</td><td>&mdash;</td><td>click, drag or tap the screen</td></tr>
+  </table>
+  <p>Holding TOP and BOT together for one second leaves an app. Sound is off until you switch it on (browsers only allow sound after a click).</p>
+
+  <h2 id="editor">Editing code</h2>
+  <ol>
+    <li>In the <b>Code</b> panel, pick <b>New app (starter)</b> or the code of one of the games.</li>
+    <li>Change the code. The <b>kk.h</b> tab lists everything you can call.</li>
+    <li>Press <b>Build &amp; run</b> (or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>). The first build takes about 10&ndash;30 seconds; your app then starts on the Dot.</li>
+    <li>Errors from the compiler show up as red lines in the editor and in a list below it. Click one to jump to the line.</li>
+  </ol>
+  <p>Your edits are saved in your own browser, per app, so they are still there when you come back. <b>Reset</b> goes back to the original code; <b>Download</b> saves your <code>app_main.c</code>.</p>
+  <div class="card">You edit <code>app_main.c</code>: one C file that is the whole app. The build files, kodekit (<code>kk.c</code>, <code>kk.h</code>) and the SDK stay the same, so every app you write here uses kodekit to draw.</div>
+
+  <h2 id="app">How an app works</h2>
+  <p>An app paints whole frames itself. The loop is always the same: <code>kk_begin()</code> waits for the screen, reads the buttons and touch, and gives you a fresh frame to draw in; <code>kk_end()</code> shows it. That runs about 60 times a second.</p>
+<pre><code>#include &lt;stdio.h&gt;
+
+#include "kode.h"
+#include "kk.h"
+
+KODE_APP_MANIFEST("My App", "games");   // name and category
+
+void app_main(void)
+{
+    kk_init();                           // start the board, once
+    for ( ;; )
+    {
+        kk_begin();                      // input + new frame
+        kk_clear(KK_BLACK);
+        kk_text_c(230, "HELLO", 4, KK_WHITE);
+        kk_end();                        // show it
+    }
+}</code></pre>
+  <p>The screen is <b>410 &times; 502</b> pixels, (0,&nbsp;0) at the top left. The glass has round corners: keep text at least <code>KK_SAFE_X</code> (40) from the sides and <code>KK_SAFE_Y</code> (36) from the top and bottom. Colours are RGB565; make your own with <code>KK_RGB(r, g, b)</code>.</p>
+  <p>Keep state in <code>static</code> variables or locals outside the loop, and do the game logic between <code>kk_begin()</code> and drawing. Use <code>kk_ms()</code> for time, so the speed does not depend on the frame rate.</p>
+
+  <h2 id="api">kodekit API</h2>
+  <h3>Frame</h3>
+  <table>
+    <tr><th>Function</th><th>What it does</th></tr>
+    <tr><td><code>kk_init()</code></td><td>Start the board. Call once, first.</td></tr>
+    <tr><td><code>kk_begin()</code></td><td>Wait for the last frame, read input, start a new frame. Returns the frame buffer (<code>uint16_t *</code>, 410&times;502).</td></tr>
+    <tr><td><code>kk_end()</code></td><td>Show the frame. TOP+BOT for 1 s leaves the app.</td></tr>
+  </table>
+  <h3>Drawing</h3>
+  <table>
+    <tr><th>Function</th><th>What it does</th></tr>
+    <tr><td><code>kk_clear(c)</code></td><td>Fill the screen.</td></tr>
+    <tr><td><code>kk_rect(x, y, w, h, c)</code></td><td>Filled rectangle.</td></tr>
+    <tr><td><code>kk_box(x, y, w, h, t, c)</code></td><td>Rectangle outline, <code>t</code> pixels thick.</td></tr>
+    <tr><td><code>kk_round(x, y, w, h, r, c)</code></td><td>Filled rectangle with round corners.</td></tr>
+    <tr><td><code>kk_disc(cx, cy, r, c)</code></td><td>Filled circle.</td></tr>
+    <tr><td><code>kk_ring(cx, cy, r, t, c)</code></td><td>Circle outline.</td></tr>
+    <tr><td><code>kk_line(x0, y0, x1, y1, t, c)</code></td><td>Line, <code>t</code> pixels thick.</td></tr>
+    <tr><td><code>kk_pixel(x, y, c)</code></td><td>One pixel.</td></tr>
+    <tr><td><code>kk_vgrad(x, y, w, h, top, bottom)</code></td><td>Vertical colour gradient.</td></tr>
+    <tr><td><code>kk_mix(a, b, t256)</code></td><td>Blend two colours (0 = a, 256 = b).</td></tr>
+    <tr><td><code>kk_blit(src)</code> &middot; <code>kk_blit_rect(x, y, w, h, src)</code></td><td>Copy a picture (RGB565) to the screen.</td></tr>
+  </table>
+  <h3>Text</h3>
+  <p>A 5&times;7 pixel font with ASCII 32&ndash;126, scaled by <code>s</code> (1 = small, 5 = big).</p>
+  <table>
+    <tr><th>Function</th><th>What it does</th></tr>
+    <tr><td><code>kk_text(x, y, str, s, c)</code></td><td>Text at x, y. Returns the width.</td></tr>
+    <tr><td><code>kk_text_c(y, str, s, c)</code></td><td>Text centred across the screen.</td></tr>
+    <tr><td><code>kk_text_w(str, s)</code></td><td>Width of a text, to place it yourself.</td></tr>
+    <tr><td><code>kk_num_c(y, n, s, c)</code></td><td>A number, centred.</td></tr>
+  </table>
+  <h3>Input</h3>
+  <table>
+    <tr><th>Function</th><th>What it does</th></tr>
+    <tr><td><code>kk_held()</code></td><td>Buttons down now, as bits: <code>KK_UP</code>, <code>KK_DOWN</code>, <code>KK_LEFT</code>, <code>KK_RIGHT</code>, <code>KK_TOP</code>, <code>KK_BOT</code>.</td></tr>
+    <tr><td><code>kk_pressed(bit)</code> &middot; <code>kk_released(bit)</code></td><td>The button went down / up since the last frame.</td></tr>
+    <tr><td><code>kk_touch(&amp;x, &amp;y)</code></td><td>A finger is on the glass now, and where.</td></tr>
+    <tr><td><code>kk_tapped(&amp;x, &amp;y)</code></td><td>A finger landed since the last frame.</td></tr>
+  </table>
+  <h3>The rest of the board</h3>
+  <table>
+    <tr><th>Function</th><th>What it does</th></tr>
+    <tr><td><code>kk_ms()</code></td><td>Milliseconds since start.</td></tr>
+    <tr><td><code>kk_rand(n)</code></td><td>Random number 0 &hellip; n&minus;1.</td></tr>
+    <tr><td><code>kk_tone(hz, ms)</code></td><td>Beep.</td></tr>
+    <tr><td><code>kk_led(r, g, b)</code></td><td>The RGB LED at the top right.</td></tr>
+    <tr><td><code>kk_buzz(ms)</code></td><td>Vibrate (the Dot on the page shakes).</td></tr>
+    <tr><td><code>kk_best_get(key)</code> &middot; <code>kk_best_put(key, v)</code></td><td>Keep a number, like a high score (key: up to 15 characters).</td></tr>
+  </table>
+  <p>Colours ready to use: <code>KK_BLACK</code>, <code>KK_WHITE</code>, <code>KK_GREY</code>, <code>KK_DARK</code>, <code>KK_BLUE</code>, <code>KK_RED</code>, <code>KK_GREEN</code>, <code>KK_YELLOW</code>, <code>KK_ORANGE</code>, <code>KK_PURPLE</code>, <code>KK_CYAN</code>, <code>KK_PINK</code>.</p>
+
+  <h2 id="examples">Examples</h2>
+  <h3>A bouncing ball</h3>
+<pre><code>void app_main(void)
+{
+    kk_init();
+    float x = 205, y = 250, vx = 3.1f, vy = 2.3f;
+    for ( ;; )
+    {
+        kk_begin();
+        x += vx; y += vy;
+        if ( x &lt; 60 || x &gt; 350 ) { vx = -vx; kk_tone(660, 20); }
+        if ( y &lt; 60 || y &gt; 440 ) { vy = -vy; kk_tone(440, 20); }
+        if ( kk_pressed(KK_TOP) ) { vx *= 1.2f; vy *= 1.2f; }
+        kk_clear(KK_DARK);
+        kk_disc((int)x, (int)y, 18, KK_CYAN);
+        kk_end();
+    }
+}</code></pre>
+  <h3>A counter with a high score</h3>
+<pre><code>static long count, best;
+
+void app_main(void)
+{
+    kk_init();
+    best = kk_best_get("taps");
+    for ( ;; )
+    {
+        kk_begin();
+        int tx, ty;
+        if ( kk_tapped(&amp;tx, &amp;ty) || kk_pressed(KK_TOP) ) { count++; kk_buzz(15); }
+        if ( kk_pressed(KK_BOT) ) { count = 0; }
+        if ( count &gt; best ) { best = count; kk_best_put("taps", best); }
+        kk_clear(KK_BLACK);
+        kk_num_c(200, count, 8, KK_WHITE);
+        char b[32];
+        snprintf(b, sizeof(b), "BEST %ld", best);
+        kk_text_c(300, b, 2, KK_GREY);
+        kk_end();
+    }
+}</code></pre>
+  <p>More: open the code of any game in the editor. Snake, Wall Breaker and Block Rain are good ones to start from.</p>
+
+  <h2 id="limits">Limits</h2>
+  <ul>
+    <li>One build at a time per visitor; a build may take up to 3 minutes. Code up to 64&nbsp;KB.</li>
+    <li>Up to 4 sims run at the same time for everyone together. If you see &ldquo;too many sims&rdquo;, try again in a minute.</li>
+    <li>Built apps are kept for about 6 hours. Your code itself stays in your browser; download it to keep it for good.</li>
+    <li>The sim has no Wi-Fi, Bluetooth, NFC or other radios. The Kode Link (<code>kk_link_*</code>) only connects devices of a logged-in user.</li>
+    <li>Your code runs in a sandbox without network access.</li>
+  </ul>
+  <p class="fine">Dash, the dog on this site, is Dot Sim's own mascot. Dot Sim is an unofficial simulator for the <a href="https://kode.diy">Kode Dot</a>. It is not made, approved or supported by Kode. Kode, Kode Dot, kodeOS and Kody are trademarks of Kode.</p>
+</main>
+</div>
+<script>
+  // Mark the section in view, like the docs' sidebar.
+  (function () {
+    const links = [...document.querySelectorAll('nav.side a')];
+    const secs = links.map((a) => document.getElementById(a.getAttribute('href').slice(1)));
+    function mark() {
+      let i = 0;
+      secs.forEach((s, k) => { if (s && s.getBoundingClientRect().top < 140) i = k; });
+      links.forEach((a, k) => a.classList.toggle('on', k === i));
+    }
+    addEventListener('scroll', mark, { passive: true }); mark();
+  })();
+</script>
+<script>
+  // Geen zoom op iOS: Safari negeert user-scalable, dus dubbeltik en knijpen zelf tegenhouden.
+  (function () {
+    let last = 0;
+    document.addEventListener('touchstart', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+    document.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - last < 400 && !(e.target.closest && e.target.closest('input, textarea, select'))) e.preventDefault();
+      last = now;
+    }, { passive: false });
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach((n) => document.addEventListener(n, (e) => e.preventDefault(), { passive: false }));
+    document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+  })();
+</script>
+<script src="/static/dash.js"></script>
+<script>
+  (function () {
+    const c = document.getElementById('logo'); if (!c || !window.Dash) return;
+    const x = c.getContext('2d');
+    (function f(t) { x.clearRect(0, 0, 96, 104); Dash.draw(x, { x: 48, y: 100, s: 0.42, t, mood: 'idle' }); requestAnimationFrame(f); })(0);
+  })();
+</script>
+</body>
+</html>

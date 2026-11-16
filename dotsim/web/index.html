@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Dot Sim</title>
+<link rel="icon" href="/static/kode-dot.png">
+<style>
+  /* Look of docs.kode.diy: warm paper, near-black text, Outfit, yellow for "here", blue for actions. */
+  :root {
+    --bg: #DED7CD; --card: rgba(255,255,255,.92); --line: #C2BAB0; --text: #191919;
+    --muted: #6E6A64; --muted2: #4A4742; --yellow: #FFAC00; --blue: #028AC2; --red: #C9303D;
+    --ok: #16A34A; --dark: #191919; --on-dark: #E8E8E8; --dim: #8A8A8A; --soft: rgba(0,0,0,.08);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; touch-action: manipulation; -webkit-text-size-adjust: 100%; }
+  * { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  body { background: var(--bg); color: var(--text); font: 17px/1.6 Outfit, "DM Sans", system-ui, sans-serif; }
+  header.top {
+    display: flex; align-items: center; gap: 14px; padding: 22px 36px; flex-wrap: wrap;
+  }
+  .brand { font: 800 30px/1 Outfit, system-ui, sans-serif; letter-spacing: -.5px; color: var(--text); text-decoration: none; }
+  .pill { font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 99px; background: var(--soft); color: var(--muted2); }
+  header.top .sp { flex: 1; }
+  .layout { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; align-items: flex-start; padding: 4px 24px 40px; }
+  .dot-wrap { flex: 0 0 auto; }
+  .dot {
+    position: relative; width: 602px; height: 979px;
+    transform-origin: top left;
+    user-select: none; -webkit-user-select: none; touch-action: none;
+  }
+  .dot img.skin { position: absolute; inset: 0; width: 602px; height: 979px; pointer-events: none; }
+  .dot canvas {
+    position: absolute; left: 96px; top: 100px; width: 410px; height: 502px;
+    border-radius: 115px; background: #000; image-rendering: pixelated;
+  }
+  .hot { position: absolute; border-radius: 50%; cursor: pointer; }
+  .hot.down { background: rgba(0,0,0,.14); }
+  .hot.arm { border-radius: 14px; }
+  .led {
+    position: absolute; left: 505px; top: 37px; width: 59px; height: 59px; border-radius: 50%;
+    pointer-events: none; mix-blend-mode: multiply; opacity: 0; transition: opacity .08s;
+  }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+  aside { flex: 1 1 340px; max-width: 460px; min-width: 0; }
+  h1 { font-size: 40px; line-height: 1.1; font-weight: 700; margin: 0 0 8px; letter-spacing: -.5px; }
+  h2 { font-size: 26px; font-weight: 600; margin: 0; }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+  label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  input[type=text], select {
+    flex: 1; min-width: 0; background: #fff; color: var(--text);
+    border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; font: inherit; font-size: 16px;
+  }
+  button, .btn {
+    background: var(--blue); color: #fff; border: 0; border-radius: 10px; text-decoration: none;
+    padding: 9px 18px; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0,0,0,.12); display: inline-flex; align-items: center; gap: 8px;
+  }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.ghost, .btn.ghost { background: var(--line); color: var(--text); box-shadow: none; }
+  .dot.buzz { animation: buzz .06s linear infinite; }
+  @keyframes buzz { 0% { translate: 0 0; } 25% { translate: 2px 0; } 75% { translate: -2px 0; } }
+  .state { margin: 18px 0 0; padding: 12px 14px; border-radius: 10px; background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--yellow); }
+  .state b { color: var(--text); }
+  pre#log {
+    margin: 14px 0 0; height: 220px; overflow: auto; background: var(--dark);
+    border-radius: 10px; padding: 12px;
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--on-dark); white-space: pre-wrap;
+  }
+  .keys { color: var(--muted); font-size: 14px; margin-top: 14px; }
+  kbd { background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; font: 12px ui-monospace, monospace; }
+  a { color: var(--text); text-decoration-color: var(--blue); text-underline-offset: 3px; }
+  .fine { color: var(--muted); font-size: 13px; margin: 16px 0 0; }
+  .editor { flex: 1 1 560px; min-width: 0; max-width: 980px; display: flex; flex-direction: column; gap: 12px; }
+  .editor .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .editor .bar select { flex: 1 1 200px; }
+  .tabs { display: flex; gap: 4px; }
+  .tabs button { background: transparent; color: var(--muted2); box-shadow: none; border-radius: 10px 10px 0 0; padding: 7px 14px; font-weight: 500; }
+  .tabs button.on { background: var(--yellow); color: var(--text); font-weight: 600; }
+  .tabs .hint { margin-left: auto; color: var(--muted); font-size: 13px; align-self: center; }
+  .editor .CodeMirror { height: 62vh; min-height: 320px; border: 1px solid var(--line); border-radius: 0 10px 10px 10px;
+                font: 13.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; background: #fff; }
+  .CodeMirror-gutters { background: #F4F1EC; border-right: 1px solid var(--line); }
+  .cm-err-line { background: rgba(220, 38, 38, .14); }
+  .cm-warn-line { background: rgba(217, 119, 6, .12); }
+  ul#problems { list-style: none; margin: 0; padding: 0; max-height: 140px; overflow: auto; font: 13px/1.5 ui-monospace, monospace; }
+  ul#problems li { padding: 4px 10px; border-radius: 8px; cursor: pointer; color: #DC2626; }
+  ul#problems li.warn { color: #D97706; }
+  ul#problems li:hover { background: var(--soft); }
+  #play { background: var(--yellow); color: var(--text); }
+  @media (max-width: 700px) {
+    header.top { padding: 16px; } .layout { padding: 4px 16px 32px; }
+    h1 { font-size: 32px; } .editor .CodeMirror { height: 55vh; } .tabs .hint { display: none; }
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+</head>
+<body>
+  <header class="top">
+    <canvas id="logo" width="96" height="104" style="width:48px;height:52px"></canvas><a class="brand" href="/">dot sim</a><span class="pill">Unofficial</span>
+    <span class="sp"></span>
+    <a class="btn ghost" href="/docs">Docs</a>
+  </header>
+  <div class="layout">
+  <div class="dot-wrap" id="wrap">
+    <div class="dot" id="dot">
+      <img class="skin" src="/static/kode-dot.png" alt="Kode Dot">
+      <canvas id="screen" width="410" height="502"></canvas>
+      <div class="led" id="led"></div>
+    </div>
+  </div>
+  <aside class="card">
+    <h1>Dot Sim</h1>
+    <p class="sub">An unofficial Kode Dot simulator in your browser. Play an app, or open its code, change it and run it right here.</p>
+    <div class="row">
+      <button id="home" title="Back to the apps (Esc)">Home</button>
+      <button id="snd" class="ghost" title="Sound on/off">Sound: off</button>
+    </div>
+    <div id="buildbox" hidden>
+    <label for="git" style="margin-top:14px">Build a new app from Git</label>
+    <div class="row">
+      <input id="git" type="text" placeholder="https://github.com/kodediy/kode-app-template">
+      <button id="build">Build</button>
+    </div>
+    </div>
+    <div class="state" id="state">Pick an app on the Dot.</div>
+    <pre id="log"></pre>
+    <div class="keys">
+      Keys: <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> d-pad,
+      <kbd>Z</kbd> TOP (blue), <kbd>X</kbd> BOT (red). Click or tap the screen to touch.
+      On the home screen, TOP or a tap opens an app; swipe or ←/→ for more.
+      Hold TOP and BOT for a second (or <kbd>Esc</kbd>) to go back home.
+    </div>
+    <p class="fine" id="legal">Dot Sim is an unofficial simulator for the <a href="https://kode.diy">Kode Dot</a>. It is not made, approved or supported by Kode. Kode, Kode Dot, kodeOS and Kody are trademarks of Kode.</p>
+  </aside>
+  <section class="editor card" id="editor">
+    <h2>Code</h2>
+    <div class="bar">
+      <select id="base" title="Start from"></select>
+      <button id="play" title="Ctrl+Enter">Build &amp; run</button>
+      <button id="reset" class="ghost" title="Throw away your changes">Reset</button>
+      <button id="dl" class="ghost" title="Save app_main.c">Download</button>
+    </div>
+    <div>
+      <div class="tabs"><button id="tab-main" class="on">app_main.c</button><button id="tab-kk">kk.h (read only)</button>
+        <span class="hint">Your edits are kept in this browser.</span></div>
+      <textarea id="code"></textarea>
+    </div>
+    <ul id="problems"></ul>
+  </section>
+  </div>
+<script src="/static/dash.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+<script>
+(async function () {
+  const dot = document.getElementById('dot');
+  const wrap = document.getElementById('wrap');
+  const cv = document.getElementById('screen');
+  const ctx = cv.getContext('2d');
+  const log = document.getElementById('log');
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const say = (t) => { log.textContent += t + '\n'; log.scrollTop = log.scrollHeight; };
+
+  // Scale the Dot to fit the window.
+  function fit() {
+    const maxH = window.innerHeight - 110;
+    const maxW = Math.min(window.innerWidth - 32, 602);
+    const s = Math.min(1, maxH / 979, maxW / 602);
+    dot.style.transform = 'scale(' + s + ')';
+    wrap.style.width = (602 * s) + 'px';
+    wrap.style.height = (979 * s) + 'px';
+  }
+  window.addEventListener('resize', fit); fit();
+
+  // Buttons at their real positions from kode-dot.json (kode-sdk/components/kui/sim/device).
+  const dev = await (await fetch('/static/kode-dot.json')).json();
+  const buttons = {};
+  function hot(name, x, y, w, h, arm) {
+    const el = document.createElement('div');
+    el.className = 'hot' + (arm ? ' arm' : '');
+    Object.assign(el.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+    const down = (e) => { e.preventDefault(); press(name, true); };
+    const up = (e) => { e.preventDefault(); press(name, false); };
+    el.addEventListener('pointerdown', down);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointerleave', up);
+    dot.appendChild(el);
+    buttons[name] = el;
+  }
+  const t = dev.top_px, b = dev.bot_px, d = dev.dpad_px;
+  hot('top', t.cx - t.d / 2, t.cy - t.d / 2, t.d, t.d);
+  hot('bot', b.cx - b.d / 2, b.cy - b.d / 2, b.d, b.d);
+  const half = d.span / 2, aw = d.arm_w, armL = (d.span - aw) / 2;
+  hot('up',    d.cx - aw / 2, d.cy - half, aw, armL, true);
+  hot('down',  d.cx - aw / 2, d.cy + aw / 2, aw, armL, true);
+  hot('left',  d.cx - half, d.cy - aw / 2, armL, aw, true);
+  hot('right', d.cx + aw / 2, d.cy - aw / 2, armL, aw, true);
+
+  let ws = null;
+  const state = {};
+  function press(name, isDown) {
+    if (state[name] === isDown) return;
+    state[name] = isDown;
+    buttons[name].classList.toggle('down', isDown);
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'btn', b: name, d: isDown }));
+    else if (!ws && isDown) launcherKey(name);
+  }
+  const keymap = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+                   z: 'top', Z: 'top', x: 'bot', X: 'bot' };
+  window.addEventListener('keydown', (e) => {
+    if (e.target.closest && e.target.closest('input, textarea, select, .CodeMirror')) return;
+    if (e.key === 'Escape') { e.preventDefault(); goHome(); return; }
+    if (e.key === 'Enter' && !ws) { e.preventDefault(); launcherKey('top'); return; }
+    const n = keymap[e.key]; if (n) { e.preventDefault(); press(n, true); }
+  });
+  window.addEventListener('keyup', (e) => {
+    const n = keymap[e.key]; if (n && state[n]) { e.preventDefault(); press(n, false); }
+  });
+
+  // Touch on the screen, in screen pixels (410x502).
+  function touch(e, kind) {
+    const r = cv.getBoundingClientRect();
+    const x = Math.round((e.clientX - r.left) * 410 / r.width);
+    const y = Math.round((e.clientY - r.top) * 502 / r.height);
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'touch', k: kind, x, y }));
+    else if (!ws) launcherTouch(kind, x, y);
+  }
+  let touching = false;
+  cv.addEventListener('pointerdown', (e) => { touching = true; cv.setPointerCapture(e.pointerId); touch(e, 'down'); });
+  cv.addEventListener('pointermove', (e) => { if (touching) touch(e, 'move'); });
+  cv.addEventListener('pointerup', (e) => { touching = false; touch(e, 'up'); });
+
+  // ---- home screen: the apps as tiles on the Dot ----
+  const PALETTE = ['#028AC2', '#46BE5A', '#F58228', '#9658DC', '#C9303D', '#3CC8DC', '#FAC828', '#F06EAA'];
+  const L = { apps: [], sel: 0, per: 9, down: null, view: 'face', last: performance.now(), wakeAt: 0, look: null, lookAt: 0, note: null, noteAt: 0, min: -1, clockAt: -1e9 };
+  const COLS = 3, TW = 92, TH = 92, GX = 22, X0 = (410 - (3 * 92 + 2 * 22)) / 2, Y0 = 96, RH = 120;
+  function tileColor(a, i) { return a.color || PALETTE[i % PALETTE.length]; }
+  function light(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 > 170;
+  }
+  function rrect(x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function tileAt(slot) {
+    return { x: X0 + (slot % COLS) * (TW + GX), y: Y0 + Math.floor(slot / COLS) * RH };
+  }
+  // The face: Dash, the time and the date, like the watch face a Dot wakes up to.
+  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  function hhmm(d) { return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+  function dashMood(t) {
+    if (t - L.noteAt < 4500 && L.note) return 'notify';
+    if (t - L.wakeAt < 1400) return 'wake';
+    if (t - L.last > 45000) return 'sleep';
+    if (t - L.clockAt < 3500) return 'clock';
+    return 'idle';
+  }
+  function drawFace(t) {
+    cv.style.filter = '';
+    const now = new Date();
+    if (now.getMinutes() !== L.min) { if (L.min >= 0) L.clockAt = t; L.min = now.getMinutes(); }
+    const mood = dashMood(t);
+    const g = ctx.createLinearGradient(0, 0, 0, 502);
+    g.addColorStop(0, '#1a1712'); g.addColorStop(1, '#050505');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 410, 502);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    const dim = mood === 'sleep';
+    ctx.fillStyle = dim ? '#8A8A8A' : '#F4EFE7'; ctx.font = '700 76px Outfit, system-ui, sans-serif';
+    ctx.fillText(hhmm(now), 205, 128);
+    ctx.fillStyle = '#FFAC00'; ctx.font = '500 19px Outfit, system-ui, sans-serif';
+    ctx.fillText(DAYS[now.getDay()] + ' ' + now.getDate() + ' ' + MONTHS[now.getMonth()], 205, 160);
+    ctx.save(); ctx.globalAlpha = dim ? 0.55 : 1;
+    Dash.draw(ctx, { x: 205, y: 448, s: 1.0, t, mood, time: hhmm(now), note: L.note,
+                     look: (t - L.lookAt < 2500) ? L.look : null });
+    ctx.restore();
+    if (!dim && t - L.last < 8000) {
+      ctx.fillStyle = 'rgba(232,232,232,.55)'; ctx.font = '13px Outfit, system-ui, sans-serif';
+      ctx.fillText('TOP or tap for apps', 205, 186);
+    }
+    setState(mood === 'sleep' ? 'Dash is asleep. Press a button to wake him.' : 'Home · press TOP or tap the screen for the apps');
+  }
+  function drawLauncher() {
+    if (ws) return;
+    if (L.view === 'face') { drawFace(performance.now()); return; }
+    cv.style.filter = '';
+    const g = ctx.createLinearGradient(0, 0, 0, 502);
+    g.addColorStop(0, '#161b23'); g.addColorStop(1, '#05070a');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 410, 502);
+    const now = new Date();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#e8eaed'; ctx.font = '600 26px system-ui, sans-serif';
+    ctx.fillText(String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'), 205, 64);
+    if (!L.apps.length) {
+      ctx.fillStyle = '#8b929c'; ctx.font = '18px system-ui, sans-serif'; ctx.fillText('loading apps…', 205, 260);
+      return;
+    }
+    const pages = Math.ceil(L.apps.length / L.per), page = Math.floor(L.sel / L.per);
+    for (let slot = 0; slot < L.per; slot++) {
+      const i = page * L.per + slot, a = L.apps[i];
+      if (!a) break;
+      const { x, y } = tileAt(slot), col = tileColor(a, i);
+      if (i === L.sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; rrect(x - 5, y - 5, TW + 10, TH + 10, 26); ctx.stroke(); }
+      ctx.fillStyle = col; rrect(x, y, TW, TH, 22); ctx.fill();
+      if (a.img && a.img.complete && a.img.naturalWidth) {
+        ctx.save(); rrect(x, y, TW, TH, 22); ctx.clip();
+        ctx.imageSmoothingEnabled = a.img.naturalWidth < TW;
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(a.img, x, y, TW, TH); ctx.restore();
+      } else {
+        ctx.fillStyle = light(col) ? '#14171c' : '#fff';
+        ctx.font = (a.mine ? '700 28px' : '700 40px') + ' system-ui, sans-serif'; ctx.textBaseline = 'middle';
+        ctx.fillText(a.mine ? '</>' : a.name.charAt(0).toUpperCase(), x + TW / 2, y + TH / 2 + 2);
+      }
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = i === L.sel ? '#fff' : '#aeb5bf'; ctx.font = '13px system-ui, sans-serif';
+      let n = a.name; while (ctx.measureText(n).width > TW + 18 && n.length > 3) n = n.slice(0, -2) + '…';
+      ctx.fillText(n, x + TW / 2, y + TH + 18);
+    }
+    if (pages > 1) {
+      for (let p = 0; p < pages; p++) {
+        ctx.fillStyle = p === page ? '#e8eaed' : '#4a515c';
+        ctx.beginPath(); ctx.arc(205 + (p - (pages - 1) / 2) * 16, 470, 4, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    const a = L.apps[L.sel];
+    setState('Home · <b>' + esc(a.name) + '</b>' + (a.desc ? ' · ' + esc(a.desc) : ''));
+  }
+  function poke() {
+    const t = performance.now();
+    const wasAsleep = t - L.last > 45000;
+    L.last = t;
+    if (wasAsleep) L.wakeAt = t;
+    return wasAsleep;
+  }
+  function launcherKey(name) {
+    if (poke() && L.view === 'face') return;
+    if (L.view === 'face') {
+      if (name === 'top' || name === 'up' || name === 'down' || name === 'left' || name === 'right') {
+        L.view = 'grid'; tone(1200, 12, 40); drawLauncher();
+      }
+      return;
+    }
+    if (name === 'bot') { L.view = 'face'; tone(600, 12, 40); drawLauncher(); return; }
+    const n = L.apps.length; if (!n) return;
+    const page = Math.floor(L.sel / L.per);
+    if (name === 'left') L.sel = (L.sel - 1 + n) % n;
+    else if (name === 'right') L.sel = (L.sel + 1) % n;
+    else if (name === 'up') L.sel = Math.max(page * L.per, L.sel - COLS);
+    else if (name === 'down') L.sel = Math.min(n - 1, Math.min(page * L.per + L.per - 1, L.sel + COLS));
+    else if (name === 'top') { openApp(L.apps[L.sel]); return; }
+    else return;
+    tone(name === 'top' ? 880 : 1200, 12, 40);
+    drawLauncher();
+  }
+  function launcherTouch(kind, x, y) {
+    if (kind === 'down') { L.down = { x, y }; return; }
+    if (L.view === 'face') {
+      if (kind === 'up' && L.down) { L.down = null; if (!poke()) { L.view = 'grid'; drawLauncher(); } }
+      return;
+    }
+    if (kind !== 'up' || !L.down) return;
+    const dx = x - L.down.x, dy = y - L.down.y, start = L.down; L.down = null;
+    const pages = Math.ceil(L.apps.length / L.per), page = Math.floor(L.sel / L.per);
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
+      const np = Math.min(pages - 1, Math.max(0, page + (dx < 0 ? 1 : -1)));
+      if (np !== page) { L.sel = np * L.per; drawLauncher(); }
+      return;
+    }
+    for (let slot = 0; slot < L.per; slot++) {
+      const i = page * L.per + slot; if (!L.apps[i]) break;
+      const t = tileAt(slot);
+      if (start.x >= t.x - 8 && start.x <= t.x + TW + 8 && start.y >= t.y - 8 && start.y <= t.y + TH + 24) {
+        L.sel = i; drawLauncher(); openApp(L.apps[i]); return;
+      }
+    }
+  }
+  function openApp(a) { if (a) { L.last = performance.now(); startSim(a.id, a.name); } }
+  function goHome() {
+    stopSim();
+    history.replaceState(null, '', location.pathname);
+    L.view = 'grid'; L.last = performance.now();
+    drawLauncher();
+  }
+  let homeT = 0;
+  function backHomeSoon() { clearTimeout(homeT); homeT = setTimeout(() => { if (!ws) drawLauncher(); }, 700); }
+  setInterval(() => { if (!ws) drawLauncher(); }, 15000);
+  // Dash moves: redraw the face every frame while it shows; back to the face after 30 s in the grid.
+  function loop() {
+    if (!ws) {
+      const t = performance.now();
+      if (L.view === 'grid' && t - L.last > 30000) { L.view = 'face'; }
+      if (L.view === 'face') drawFace(t);
+    }
+    requestAnimationFrame(loop);
+  }
+  cv.addEventListener('pointermove', (e) => {
+    if (ws) return;
+    const r = cv.getBoundingClientRect();
+    L.look = { x: (e.clientX - r.left) * 410 / r.width, y: (e.clientY - r.top) * 502 / r.height };
+    L.lookAt = performance.now();
+  });
+
+  // ---- the sim ----
+  document.getElementById('home').addEventListener('click', goHome);
+  const stateEl = document.getElementById('state');
+  const led = document.getElementById('led');
+  const setState = (html) => { stateEl.innerHTML = html; };
+
+  async function loadApps() {
+    try {
+      const s = await (await fetch('/api/status')).json();
+      document.getElementById('buildbox').hidden = !s.user;
+      const mine = L.apps.filter((a) => a.mine);
+      const order = ['slang', 'muurbreker', 'blokkenregen', 'schuif', 'fladder', 'tafeltennis', 'kleurgeheugen', 'reflex', 'kody_kart', 'krabbel', 'stopwatch'];
+      const rank = (a) => { const k = order.indexOf(a.id); return k < 0 ? 99 : k; };
+      L.apps = mine.concat(s.apps.slice().sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)));
+      for (const a of L.apps) {
+        if (a.icon && !a.img) { a.img = new Image(); a.img.onload = () => drawLauncher(); a.img.src = '/api/icon/' + a.id; }
+      }
+      L.sel = Math.min(L.sel, Math.max(0, L.apps.length - 1));
+      if (!s.apps.length) setState('No apps built yet.');
+      drawLauncher();
+    } catch (e) { say('server not reachable'); }
+  }
+
+  // Sound: tones as an oscillator, PCM as buffers back to back.
+  let actx = null, pcmAt = 0, sound = true;
+  try { sound = localStorage.getItem('kode-sound') !== '0'; } catch (e) {}
+  const sndBtn = document.getElementById('snd');
+  function showSnd() { sndBtn.textContent = 'Sound: ' + (sound ? 'on' : 'off'); }
+  showSnd();
+  sndBtn.addEventListener('click', () => {
+    sound = !sound; showSnd();
+    try { localStorage.setItem('kode-sound', sound ? '1' : '0'); } catch (e) {}
+    if (sound) audio(); else if (actx) { actx.close(); actx = null; pcmAt = 0; }
+  });
+  function audio() {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+    return actx;
+  }
+  function tone(hz, ms, vol) {
+    if (!sound) return;
+    const a = audio(), o = a.createOscillator(), g = a.createGain();
+    o.type = 'square'; o.frequency.value = hz;
+    g.gain.value = 0.08 * (vol / 100);
+    o.connect(g).connect(a.destination);
+    o.start(); o.stop(a.currentTime + ms / 1000);
+  }
+  function pcm(buf) {
+    if (!sound) return;
+    const a = audio(), dv = new DataView(buf);
+    const rate = dv.getUint32(1, true), n = (buf.byteLength - 5) >> 1;
+    const ab = a.createBuffer(1, n, rate), ch = ab.getChannelData(0);
+    for (let i = 0; i < n; i++) ch[i] = dv.getInt16(5 + i * 2, true) / 32768;
+    const src = a.createBufferSource(); src.buffer = ab; src.connect(a.destination);
+    pcmAt = Math.max(pcmAt, a.currentTime + 0.05);
+    src.start(pcmAt); pcmAt += ab.duration;
+  }
+
+  function stopSim() {
+    if (ws) { try { ws.close(); } catch (e) {} }
+    ws = null;
+  }
+
+  let label = '';
+  function startSim(appId, name) {
+    stopSim();
+    const app = appId; if (!app) return;
+    label = name || app;
+    if (sound) audio();
+    if (!app.startsWith('g_')) history.replaceState(null, '', '?app=' + encodeURIComponent(app));
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 410, 502);
+    ctx.fillStyle = '#8b929c'; ctx.font = '18px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('starting ' + label + '…', 205, 260);
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(proto + '//' + location.host + '/ws?app=' + encodeURIComponent(app));
+    ws.binaryType = 'arraybuffer';
+    setState('Starting…');
+    let frames = 0, t0 = performance.now();
+    ws.onmessage = async (ev) => {
+      if (typeof ev.data === 'string') {
+        const m = JSON.parse(ev.data);
+        if (m.t === 'started') { setState('Running: <b>' + esc(label) + '</b>'); say('— ' + label + ' started'); }
+        else if (m.t === 'log') say(m.s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\s+$/, ''));
+        else if (m.t === 'led') {
+          const on = m.r + m.g + m.b > 0;
+          led.style.opacity = on ? 1 : 0;
+          led.style.background = 'radial-gradient(circle, rgb(' + m.r + ',' + m.g + ',' + m.b + ') 0%, transparent 70%)';
+        }
+        else if (m.t === 'bright') cv.style.filter = 'brightness(' + Math.max(0.15, m.v / 100) + ')';
+        else if (m.t === 'tone') tone(m.hz, m.ms, m.vol);
+        else if (m.t === 'haptic') {
+          dot.classList.add('buzz'); setTimeout(() => dot.classList.remove('buzz'), Math.min(m.ms, 600));
+          if (navigator.vibrate) navigator.vibrate(Math.min(m.ms, 600));
+        }
+        else if (m.t === 'exit') { say('— app stopped: ' + m.why); stopSim(); history.replaceState(null, '', location.pathname); backHomeSoon(); }
+        else if (m.t === 'ended') { if (m.err) say(m.err); stopSim(); backHomeSoon(); }
+        else if (m.t === 'error') { say('error: ' + m.s); stopSim(); drawLauncher(); setState('Error: ' + esc(m.s)); }
+        return;
+      }
+      const kind = new Uint8Array(ev.data, 0, 1)[0];
+      if (kind === 74) { // 'J'
+        const bmp = await createImageBitmap(new Blob([new Uint8Array(ev.data, 1)], { type: 'image/jpeg' }));
+        ctx.drawImage(bmp, 0, 0); bmp.close();
+        frames++;
+        const dt = performance.now() - t0;
+        if (dt > 2000) { setState('Running: <b>' + esc(label) + '</b> · ' + Math.round(frames * 1000 / dt) + ' fps'); frames = 0; t0 = performance.now(); }
+      } else if (kind === 80) { // 'P'
+        pcm(ev.data);
+      }
+    };
+    ws.onclose = (e) => { if (e.target === ws) { stopSim(); backHomeSoon(); } };
+  }
+  // ---- build from Git (logged in only) ----
+  const gitIn = document.getElementById('git');
+  const buildBtn = document.getElementById('build');
+  async function build() {
+    const repo = gitIn.value.trim();
+    if (!repo) return;
+    buildBtn.disabled = true;
+    setState('Building…');
+    say('— building: ' + repo);
+    let r;
+    try {
+      r = await (await fetch('/api/build', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ repo }) })).json();
+    } catch (e) { r = { error: 'server not reachable' }; }
+    if (r.error) { say('error: ' + r.error); setState('Error: ' + esc(r.error)); buildBtn.disabled = false; return; }
+    let next = 0;
+    for (;;) {
+      await new Promise((res) => setTimeout(res, 1000));
+      let j;
+      try { j = await (await fetch('/api/build/' + r.job + '?since=' + next)).json(); } catch (e) { continue; }
+      for (const line of j.lines) say(line);
+      next = j.next;
+      if (j.state === 'building' || j.state === 'waiting') { setState('Build: ' + j.state + '…'); continue; }
+      buildBtn.disabled = false;
+      if (j.state === 'done') {
+        await loadApps(); startSim(j.app);
+        say('— built ' + j.app);
+      } else {
+        setState('Build failed, see the log.');
+      }
+      break;
+    }
+  }
+  buildBtn.addEventListener('click', build);
+  gitIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') build(); });
+
+
+  // ---- the code editor (anyone) ----
+  const baseSel = document.getElementById('base');
+  const playBtn = document.getElementById('play');
+  const probs = document.getElementById('problems');
+  let kkH = '', base = 'new', marks = [];
+  const cm = CodeMirror.fromTextArea(document.getElementById('code'), {
+    mode: 'text/x-csrc', theme: 'default', lineNumbers: true, indentUnit: 4, tabSize: 4,
+    indentWithTabs: false, matchBrackets: true, autoCloseBrackets: true,
+    extraKeys: { 'Ctrl-Enter': () => play(), 'Cmd-Enter': () => play(),
+                 Tab: (c) => c.somethingSelected() ? c.indentSelection('add') : c.replaceSelection('    ') },
+  });
+  const mainDoc = cm.getDoc();
+  const kkDoc = CodeMirror.Doc('', 'text/x-csrc');
+  let pristine = '';
+  const draftKey = () => 'kode-code-' + base;
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    del(k) { try { localStorage.removeItem(k); } catch (e) {} },
+  };
+  function showTab(kk) {
+    document.getElementById('tab-main').classList.toggle('on', !kk);
+    document.getElementById('tab-kk').classList.toggle('on', kk);
+    cm.swapDoc(kk ? kkDoc : mainDoc);
+    cm.setOption('readOnly', kk);
+  }
+  document.getElementById('tab-main').addEventListener('click', () => showTab(false));
+  document.getElementById('tab-kk').addEventListener('click', () => showTab(true));
+
+  async function loadSource(id) {
+    const r = await (await fetch('/api/source/' + encodeURIComponent(id))).json();
+    base = id; pristine = r.code; kkH = r.kk_h;
+    kkDoc.setValue(kkH);
+    showTab(false);
+    mainDoc.setValue(store.get(draftKey()) ?? r.code);
+    mainDoc.clearHistory();
+    clearMarks();
+    store.set('kode-base', id);
+  }
+  async function loadBases() {
+    const r = await (await fetch('/api/sources')).json();
+    baseSel.innerHTML = '';
+    const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; baseSel.appendChild(o); };
+    add('new', 'New app (starter)');
+    for (const a of r.apps) add(a.id, 'Code of ' + a.name);
+    const want = new URLSearchParams(location.search).get('code') || store.get('kode-base') || 'new';
+    baseSel.value = [...baseSel.options].some((o) => o.value === want) ? want : 'new';
+    await loadSource(baseSel.value);
+  }
+  baseSel.addEventListener('change', () => loadSource(baseSel.value));
+  let saveT = 0;
+  mainDoc.on('change', () => {
+    clearTimeout(saveT);
+    saveT = setTimeout(() => {
+      const v = mainDoc.getValue();
+      if (v === pristine) store.del(draftKey()); else store.set(draftKey(), v);
+    }, 400);
+  });
+  document.getElementById('reset').addEventListener('click', () => {
+    if (mainDoc.getValue() !== pristine && !confirm('Throw away your changes to this code?')) return;
+    store.del(draftKey()); mainDoc.setValue(pristine); clearMarks();
+  });
+  document.getElementById('dl').addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([mainDoc.getValue()], { type: 'text/x-c' }));
+    a.download = (base === 'new' ? 'my_app' : base) + '_app_main.c'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  function clearMarks() {
+    for (const m of marks) mainDoc.removeLineClass(m.line, 'background', m.cls);
+    marks = []; probs.innerHTML = '';
+  }
+  function markProblems(lines) {
+    clearMarks();
+    const seen = new Set();
+    for (const l of lines) {
+      const m = /app_main\.c:(\d+):(\d+):\s*(fatal error|error|warning):\s*(.*)$/.exec(l);
+      if (!m) continue;
+      const key = m[1] + m[3] + m[4]; if (seen.has(key)) continue; seen.add(key);
+      const line = parseInt(m[1], 10) - 1, warn = m[3] === 'warning';
+      const cls = warn ? 'cm-warn-line' : 'cm-err-line';
+      mainDoc.addLineClass(line, 'background', cls); marks.push({ line, cls });
+      const li = document.createElement('li'); if (warn) li.className = 'warn';
+      li.textContent = 'line ' + m[1] + ': ' + m[3] + ': ' + m[4];
+      li.addEventListener('click', () => { showTab(false); cm.focus(); cm.setCursor({ line, ch: parseInt(m[2], 10) - 1 }); cm.scrollIntoView(null, 120); });
+      probs.appendChild(li);
+    }
+  }
+
+  async function play() {
+    if (playBtn.disabled) return;
+    showTab(false);
+    playBtn.disabled = true; clearMarks();
+    setState('Building your code…');
+    say('— building your code');
+    let r;
+    try {
+      r = await (await fetch('/api/play', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                           body: JSON.stringify({ base, code: mainDoc.getValue() }) })).json();
+    } catch (e) { r = { error: 'server not reachable' }; }
+    if (r.error) { say('error: ' + r.error); setState('Error: ' + esc(r.error)); playBtn.disabled = false; return; }
+    const name = (/KODE_APP_MANIFEST\(\s*"([^"]+)"/.exec(mainDoc.getValue()) || [, 'your app'])[1];
+    if (r.job) {
+      let next = 0; const all = [];
+      for (;;) {
+        await new Promise((res) => setTimeout(res, 1000));
+        let j;
+        try { j = await (await fetch('/api/build/' + r.job + '?since=' + next)).json(); } catch (e) { continue; }
+        for (const line of j.lines) { say(line); all.push(line); }
+        next = j.next;
+        if (j.state === 'waiting') { setState('Waiting for a free builder…'); continue; }
+        if (j.state === 'building') { setState('Compiling…'); continue; }
+        markProblems(all);
+        if (j.state !== 'done') {
+          playBtn.disabled = false;
+          setState(probs.children.length ? 'Your code has errors: see the red lines.' : 'Build failed, see the log.');
+          return;
+        }
+        break;
+      }
+    } else {
+      say('— same code as before, no rebuild needed');
+    }
+    playBtn.disabled = false;
+    L.apps = [{ id: r.app, name, color: '#FFAC00', desc: 'your code', mine: true }].concat(L.apps.filter((a) => !a.mine));
+    L.note = 'Built: ' + name; L.noteAt = performance.now();
+    L.sel = 0;
+    startSim(r.app, name);
+  }
+  playBtn.addEventListener('click', play);
+  try { await loadBases(); } catch (e) { say('could not load the code'); }
+
+  requestAnimationFrame(loop);
+  await loadApps();
+  const want = new URLSearchParams(location.search).get('app');
+  const wa = want && L.apps.find((a) => a.id === want);
+  if (wa) { L.sel = L.apps.indexOf(wa); openApp(wa); }
+})();
+</script>
+<script>
+  // No zoom on iOS: Safari ignores user-scalable, so block double-tap and pinch ourselves.
+  (function () {
+    let last = 0;
+    document.addEventListener('touchstart', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+    document.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - last < 400 && !(e.target.closest && e.target.closest('input, textarea, select'))) e.preventDefault();
+      last = now;
+    }, { passive: false });
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach((n) => document.addEventListener(n, (e) => e.preventDefault(), { passive: false }));
+    document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+  })();
+</script>
+<script>
+  (function () {   // Dash in the header
+    const c = document.getElementById('logo'); if (!c || !window.Dash) return;
+    const x = c.getContext('2d');
+    (function f(t) { x.clearRect(0, 0, 96, 104); Dash.draw(x, { x: 48, y: 100, s: 0.42, t, mood: 'idle' }); requestAnimationFrame(f); })(0);
+  })();
+</script>
+</body>
+</html>
