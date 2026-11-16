@@ -113,7 +113,7 @@ def sandbox():
 
     def run(script):
         cmd = ["bwrap", "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib",
-               "--ro-bind-try", "/lib64", "/lib64", "--ro-bind-try", "/bin", "/bin", "--tmpfs", "/data",
+               "--ro-bind-try", "/lib64", "/lib64", "--ro-bind-try", "/bin", "/bin", *server.DATA_MOUNT_ARGS,
                *server.SD_MOUNT_ARGS, "--dev", "/dev", "--proc", "/proc", "--unshare-all", "--die-with-parent",
                "--new-session", "sh", "-c", script]
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

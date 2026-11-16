@@ -299,6 +299,151 @@ def sd_read(dfd, name):
         return None, "no such file"
 
 
+# ---- Caps on the sim's /tmp and /data ----
+#
+# /tmp and /data are size-limited tmpfs mounts inside the sandbox, so whatever an app writes stops at the cap.
+# /data starts as a copy of the app's saved data (NVS, high scores, storage/) and is copied back when the
+# session ends, only if it is small. bwrap 0.8 cannot cap inodes, so the copy-back caps the file count.
+# Saved data is never trusted: both copies go through tree_copy, which uses lstat/O_NOFOLLOW directory fds
+# and copies only regular files and folders. Copy-back reads the sandbox's /data through a directory fd opened
+# once at start (via /proc/<pid>/root, like the card); the fd keeps the tmpfs readable after the app has died.
+
+TMP_MOUNT_ARGS = ["--size", str(32 * 1024 * 1024), "--tmpfs", "/tmp"]
+DATA_MOUNT_ARGS = ["--size", str(16 * 1024 * 1024), "--tmpfs", "/data"]
+SAVE_MAX_BYTES = 1024 * 1024
+SAVE_MAX_FILES = 200
+SAVE_MAX_DEPTH = 8
+
+
+class TreeTooBig(Exception):
+    pass
+
+
+def _tree_copy(src_fd, dest, state, depth, skip=()):
+    if depth > SAVE_MAX_DEPTH:
+        raise TreeTooBig("too deep")
+    dest.mkdir(exist_ok=True)
+    for name in os.listdir(src_fd):
+        if name in skip or name in (".", ".."):
+            continue
+        try:
+            st = os.stat(name, dir_fd=src_fd, follow_symlinks=False)
+        except OSError:
+            continue
+        if stat.S_ISDIR(st.st_mode):
+            state[0] += 1
+            if state[0] > SAVE_MAX_FILES:
+                raise TreeTooBig("more than %d files" % SAVE_MAX_FILES)
+            try:
+                sub = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=src_fd)
+            except OSError:
+                continue
+            try:
+                _tree_copy(sub, dest / name, state, depth + 1)
+            finally:
+                os.close(sub)
+        elif stat.S_ISREG(st.st_mode):
+            state[0] += 1
+            if state[0] > SAVE_MAX_FILES:
+                raise TreeTooBig("more than %d files" % SAVE_MAX_FILES)
+            try:
+                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=src_fd)
+            except OSError:
+                continue
+            try:
+                if not stat.S_ISREG(os.fstat(fd).st_mode):
+                    continue
+                with open(dest / name, "wb") as f:
+                    while True:
+                        data = os.read(fd, 65536)
+                        if not data:
+                            break
+                        state[1] += len(data)
+                        if state[1] > SAVE_MAX_BYTES:
+                            raise TreeTooBig("more than %d bytes" % SAVE_MAX_BYTES)
+                        f.write(data)
+            finally:
+                os.close(fd)
+        # anything else (links, devices, sockets, fifos) is skipped
+
+
+def tree_copy(src_fd, dest, skip=()):
+    """Copy the regular files and folders below the directory fd to @p dest (<=1 MB, <=200 files); raises TreeTooBig."""
+    _tree_copy(src_fd, Path(dest), [0, 0], 0, skip)
+
+
+def data_seed(saved, dest):
+    """Stage the app's saved data into @p dest for the new sandbox. Empty (and logged) if it is unusable."""
+    dest = Path(dest)
+    dest.mkdir(exist_ok=True)
+    try:
+        fd = os.open(saved, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError:
+        return
+    try:
+        tree_copy(fd, dest, skip=("sd",))
+    except (TreeTooBig, OSError) as e:
+        log.warning("data: saved data of %s not loaded: %s", saved, e)
+        shutil.rmtree(dest, ignore_errors=True)
+        dest.mkdir()
+    finally:
+        os.close(fd)
+
+
+def data_open(pid):
+    """A directory fd on the sandbox's /data, or None."""
+    try:
+        return os.open(f"/proc/{pid}/root/data", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError:
+        return None
+
+
+def data_save(fd, saved):
+    """Copy the sandbox's /data (not the card) over the saved data; keep the old one and log why if it is too big."""
+    saved = Path(saved)
+    new = saved.with_name(saved.name + ".new")
+    old = saved.with_name(saved.name + ".old")
+    shutil.rmtree(new, ignore_errors=True)
+    try:
+        tree_copy(fd, new, skip=("sd",))
+    except (TreeTooBig, OSError) as e:
+        log.warning("data: not saved for %s, the old data stays: %s", saved.name, e)
+        shutil.rmtree(new, ignore_errors=True)
+        return False
+    shutil.rmtree(old, ignore_errors=True)
+    try:
+        if saved.exists():
+            saved.rename(old)
+        new.rename(saved)
+    except OSError as e:
+        log.warning("data: not saved for %s: %s", saved.name, e)
+        return False
+    finally:
+        shutil.rmtree(old, ignore_errors=True)
+    return True
+
+
+def sim_cmd(elf, run_dir, seed):
+    """The sandbox command line of a sim. /data starts as a copy of @p seed, which is mounted read-only at /seed."""
+    return [
+        "bwrap", "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib",
+        "--ro-bind-try", "/lib64", "/lib64", "--ro-bind-try", "/lib32", "/lib32",
+        "--ro-bind-try", "/bin", "/bin",
+        "--ro-bind", "/etc/ld.so.cache", "/etc/ld.so.cache",
+        "--ro-bind", str(elf), "/app.elf",
+        "--bind", str(run_dir), "/run/sim",
+        "--ro-bind", str(seed), "/seed",
+        *DATA_MOUNT_ARGS,
+        *SD_MOUNT_ARGS,
+        "--dev", "/dev", "--proc", "/proc", *TMP_MOUNT_ARGS,
+        "--unshare-all", "--die-with-parent", "--new-session",
+        "--setenv", "KODE_SIM_SOCK", "/run/sim/sim.sock",
+        "--setenv", "KODE_SIM_DATA", "/data",
+        "--chdir", "/data",
+        "/bin/sh", "-c", "cp -R /seed/. /data/ 2>/dev/null; exec /app.elf",
+    ]
+
+
 class Session:
     """One browser tab, one sim process."""
 
@@ -320,6 +465,7 @@ class Session:
         self.buttons = 0
         self.sd_fd = None          # the card's directory, once the sim has started (sd_open)
         self.sd_lock = asyncio.Lock()
+        self.data_fd = None        # the sandbox's /data, for the copy-back at the end
 
     @property
     def peer(self):
@@ -401,21 +547,9 @@ class Session:
 
         server = await asyncio.start_unix_server(on_conn, path=str(sock_path))
         os.chmod(sock_path, 0o777)
-        cmd = [
-            "bwrap", "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib",
-            "--ro-bind-try", "/lib64", "/lib64", "--ro-bind-try", "/lib32", "/lib32",
-            "--ro-bind", "/etc/ld.so.cache", "/etc/ld.so.cache",
-            "--ro-bind", str(elf), "/app.elf",
-            "--bind", str(self.tmp), "/run/sim",
-            "--bind", str(data), "/data",
-            *SD_MOUNT_ARGS,
-            "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
-            "--unshare-all", "--die-with-parent", "--new-session",
-            "--setenv", "KODE_SIM_SOCK", "/run/sim/sim.sock",
-            "--setenv", "KODE_SIM_DATA", "/data",
-            "--chdir", "/data",
-            "/app.elf",
-        ]
+        seed = self.tmp / "seed"
+        await asyncio.get_running_loop().run_in_executor(None, data_seed, data, seed)
+        cmd = sim_cmd(elf, self.tmp, seed)
         self.proc = await asyncio.create_subprocess_exec(
             "prlimit", "--as=1500000000", "--cpu=3600", "--", *cmd,
             stdin=asyncio.subprocess.DEVNULL,
@@ -439,6 +573,9 @@ class Session:
         self.sd_fd = sd_open(kid) if kid else None
         if self.sd_fd is None:
             log.warning("sd: no access to the card of pid %s", self.proc.pid)
+        self.data_fd = data_open(kid) if kid else None
+        if self.data_fd is None:
+            log.warning("data: no access to /data of pid %s, nothing will be saved", self.proc.pid)
 
     async def pump_sim(self):
         """Records from the sim to the browser."""
@@ -595,6 +732,14 @@ class Session:
             except OSError:
                 pass
             self.sd_fd = None
+        if self.data_fd is not None:
+            fd, self.data_fd = self.data_fd, None
+            try:
+                await asyncio.get_running_loop().run_in_executor(None, data_save, fd, DATA / self.app_id)
+            except Exception:
+                log.exception("data: copy-back failed")
+            finally:
+                os.close(fd)
         if self.sender:
             await self.sender.stop()
         self.frame_evt.set()
