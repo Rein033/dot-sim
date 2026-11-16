@@ -21,8 +21,9 @@
  *                         (board axes: x right, y toward the top, z out of the glass)
  *   "c <text>"            a console line: echoed back as an 'L' record "> <text>" and
  *                         written, with a newline, to the firmware's stdin
- *   "? bat" / "? imu"     ask for the model's state (for tests): answered as 'L' records
- *                         "bat <pct> <usb>" and "imu <ten values>"
+ *   "? bat" / "? imu"     ask what the SDK's drivers read back from the chips (for tests):
+ *                         answered as 'L' records "bat <pct> <usb>" and "imu <ten values>"
+ *                         (nothing while the drivers are not up yet)
  *
  * Without KODE_SIM_SOCK the sim runs headless; KODE_SIM_SNAP=<file.ppm> then
  * writes the last frame there (at most twice a second) for tests.
@@ -356,21 +357,7 @@ static void handle_line(char *line)
     else if ( ('?' == line[0]) && (' ' == line[1]) )
     {
         char out[160];
-        int n = 0;
-        if ( 0 == strncmp(line + 2, "bat", 3U) )
-        {
-            uint8_t pct;
-            bool usb;
-            kdotsim_battery_get(&pct, &usb);
-            n = snprintf(out, sizeof(out), "bat %u %u\n", (unsigned)pct, usb ? 1U : 0U);
-        }
-        else if ( 0 == strncmp(line + 2, "imu", 3U) )
-        {
-            int32_t v[KDOTSIM_MOTION_N];
-            kdotsim_motion_get(v);
-            n = snprintf(out, sizeof(out), "imu %d %d %d %d %d %d %d %d %d %d\n", (int)v[0], (int)v[1],
-                         (int)v[2], (int)v[3], (int)v[4], (int)v[5], (int)v[6], (int)v[7], (int)v[8], (int)v[9]);
-        }
+        int const n = kdotsim_probe(line + 2, out, sizeof(out));
         if ( n > 0 )
         {
             kdotsim_log(out, (size_t)n);
@@ -448,10 +435,14 @@ void kdotsim_start(void)
             s_ring = malloc(RING_BYTES);
             /* Console lines from the page arrive on stdin, as from a terminal. */
             int pf[2];
+            signal(SIGPIPE, SIG_IGN);   /* a closed stdin must not kill the sim */
             if ( pipe(pf) == 0 )
             {
-                (void)dup2(pf[0], 0);
-                (void)close(pf[0]);
+                if ( 0 != pf[0] )   /* (0 means stdin was closed and is now the pipe already) */
+                {
+                    (void)dup2(pf[0], 0);
+                    (void)close(pf[0]);
+                }
                 s_stdin_w = pf[1];
                 (void)fcntl(s_stdin_w, F_SETFL, fcntl(s_stdin_w, F_GETFL) | O_NONBLOCK);
             }

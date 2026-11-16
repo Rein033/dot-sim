@@ -169,30 +169,39 @@ static void gauge_regs(chip_t *c)
     i16_be(&r[0xA8], raw);
 }
 
-/* QMI8658 (kdrv_qmi8658.c): WHO_AM_I, then TEMP and the six words at 0x33; +-8 g is 4096 LSB/g,
- * +-512 dps is 64 LSB/dps, the temperature 256 LSB per degree. */
+/* QMI8658 (kdrv_qmi8658.c): WHO_AM_I, STATUS0 (data ready), TEMP and the six words at 0x33.
+ * The scales follow CTRL2 / CTRL3 as the part's: aFS (bits 6:4) 0..3 is +-2/4/8/16 g, so 16384 >> aFS LSB/g;
+ * gFS (bits 6:4) 0..7 is +-16..2048 dps, so 2048 >> gFS LSB/dps. The SDK driver writes +-8 g and +-512 dps
+ * (QMI_CTRL2_8G_ODR3, QMI_CTRL3_512_ODR3) and decodes with 4096 and 64. The temperature is 256 LSB per degree. */
 static void imu_regs(chip_t *c)
 {
     uint8_t *r = c->reg;
+    int32_t const a_lsb = 16384 >> ((r[0x03] >> 4) & 3U);
+    int32_t const g_lsb = 2048 >> ((r[0x04] >> 4) & 7U);
     r[0x00] = 0x05U;
     r[0x01] = 0x7CU;
+    r[0x2E] = 0x03U;   /* STATUS0: aDA and gDA, always a new sample */
     i16_le(&r[0x33], scale_i(s_motion[9], 256, 10));
     for ( unsigned i = 0U; i < 3U; ++i )
     {
-        i16_le(&r[0x35U + (2U * i)], scale_i(s_motion[i], 4096, 1000));
-        i16_le(&r[0x3BU + (2U * i)], scale_i(s_motion[3U + i], 64, 1000));
+        i16_le(&r[0x35U + (2U * i)], scale_i(s_motion[i], a_lsb, 1000));
+        i16_le(&r[0x3BU + (2U * i)], scale_i(s_motion[3U + i], g_lsb, 1000));
     }
 }
 
-/* QMC5883P (kdrv_qmc5883p.c): chip id 0x80, status DRDY, X Y Z little endian at 0x01, 1 LSB = 1 mG. */
+/* QMC5883P (kdrv_qmc5883p.c): chip id 0x80, status DRDY, X Y Z little endian at 0x01. CTRL2 (0x0B) bits 3:2 are
+ * the range: +-30 / 12 / 8 / 2 G, 1000 / 2500 / 3750 / 15000 LSB/G. The SDK driver writes +-30 G
+ * (QMC_CTRL2_30G) and reads 1 LSB as 1 mG. */
 static void mag_regs(chip_t *c)
 {
+    static const int32_t lsb_per_g[4] = { 1000, 2500, 3750, 15000 };
     uint8_t *r = c->reg;
+    int32_t const lsb = lsb_per_g[(r[0x0B] >> 2) & 3U];
     r[0x00] = 0x80U;
     r[0x09] = 0x01U;
     for ( unsigned i = 0U; i < 3U; ++i )
     {
-        i16_le(&r[0x01U + (2U * i)], s_motion[6U + i]);
+        i16_le(&r[0x01U + (2U * i)], scale_i(s_motion[6U + i], lsb, 1000));
     }
 }
 
@@ -374,6 +383,11 @@ kode_status_t khal_i2c_write_regs(khal_i2c_dev_t dev, uint8_t reg, const uint8_t
             continue;   /* read-only input port */
         }
         c->reg[r] = buf[i];
+    }
+    if ( c == &s_chip[C_IMU] )
+    {
+        /* CTRL9 handshake: STATUSINT bit 7 is up while a command is in CTRL9, down once it is acknowledged (0). */
+        c->reg[0x2D] = (0U != c->reg[0x0A]) ? 0x80U : 0x00U;
     }
     bool const led = (c == &s_chip[C_LED]);
     if ( led && (0U == reg) && (len > 0U) && (0x07U == (buf[0] & 0x07U)) )

@@ -79,6 +79,10 @@ void kdotsim_battery_get(uint8_t *pct, bool *usb);
 void kdotsim_motion_set(const int32_t v[KDOTSIM_MOTION_N]);
 void kdotsim_motion_get(int32_t v[KDOTSIM_MOTION_N]);
 
+/** @brief Test probe (kdrv_probe_sim.c): what the SDK's drivers read back for "bat" or "imu", as the
+ *         text line the bridge answers with; returns its length, 0 when a driver is not up yet. */
+int kdotsim_probe(const char *what, char *out, size_t cap);
+
 /* ---- The board, below the drivers: the I2C chips and the GPIO lines ---- */
 
 /** @brief Called by the GPIO model when an input line changes (from the bridge). */

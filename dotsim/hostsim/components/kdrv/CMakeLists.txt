@@ -47,6 +47,7 @@ set(srcs
     "src/kdrv_display_sim.c"
     "src/kdrv_es8311_sim.c"
     "src/kdrv_absent_sim.c"
+    "src/kdrv_probe_sim.c"
 )
 
 idf_component_register(
@@ -65,3 +66,4 @@ idf_component_register(
     PRIV_REQUIRES esp_timer freertos esp_partition esp_app_format esp_rom mbedtls
 )
 target_link_libraries(${COMPONENT_LIB} PRIVATE m)
+target_link_libraries(${COMPONENT_LIB} INTERFACE "-Wl,-u,kdotsim_probe")   # khal's bridge calls it; keep it in the link

@@ -88,6 +88,7 @@ class Sim:
         """Send '? what' until a record starting with prefix comes (the app may still be booting)."""
         end = time.time() + 10
         while time.time() < end:
+            self._drain()
             since = len(self.logs)
             self.send("? " + what)
             try:
@@ -95,6 +96,14 @@ class Sim:
             except AssertionError:
                 pass
         raise AssertionError("no %r answer" % prefix)
+
+    def _drain(self):
+        """Take in whatever is still on its way, so a late answer to an earlier ? is not mistaken for the next."""
+        while True:
+            n = len(self.logs)
+            self._pump(0.2)
+            if len(self.logs) == n and not self.buf:
+                return
 
     def close(self):
         self.proc.kill()
@@ -118,7 +127,14 @@ def test_battery_line_sets_gauge(sim):
 
 def test_motion_line_sets_imu(sim):
     sim.send("i 100 -200 1000 5000 -6000 7000 300 -400 500 253")
-    assert sim.ask("imu", "imu ") == "imu 100 -200 1000 5000 -6000 7000 300 -400 500 253"
+    got = [int(v) for v in sim.ask("imu", "imu ").split()[1:]]
+    want = [100, -200, 1000, 5000, -6000, 7000, 300, -400, 500, 253]
+    # what the SDK's drivers decode: a few LSB of rounding on acceleration (4096 LSB/g),
+    # one LSB (15.6 mdps) on rotation (64 LSB/dps), 1/10 degree on temperature; the field is exact
+    tol = [1, 1, 1, 16, 16, 16, 0, 0, 0, 1]
+    assert len(got) == 10
+    for g, w, t in zip(got, want, tol):
+        assert abs(g - w) <= t, (got, want)
 
 
 def test_console_roundtrip(sim):
