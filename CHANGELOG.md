@@ -6,6 +6,12 @@ change how kode-sim is used, and says so here.
 
 ## [Unreleased]
 
+### Added
+
+- **The page is in English and Spanish.** It follows the browser's language,
+  and an ES | EN switch at the bottom of the side panel changes it without a
+  reload; the choice is kept in the browser.
+
 ### Fixed
 
 - **The USB host takes nothing from a Kode Dot that restarted until its new
